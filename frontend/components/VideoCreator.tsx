@@ -115,27 +115,27 @@ export default function VideoCreator() {
   }
 
   return (
-    <div className="space-y-6">
-      <form onSubmit={handleSubmit} className="space-y-5">
+    <div className="space-y-6 relative z-10">
+      <form onSubmit={handleSubmit} className="space-y-6">
         <div>
-          <label htmlFor="topic" className="block text-sm font-semibold text-gray-800 mb-2">
-            หัวข้อวิดีโอ
+          <label htmlFor="topic" className="block text-sm font-mono font-bold text-[#00ff41] mb-3 uppercase tracking-wider">
+            &gt; INPUT_TOPIC
           </label>
           <input
             type="text"
             id="topic"
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
-            placeholder="เช่น: สอนปลูกต้นไม้"
-            className="w-full px-5 py-4 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all text-base bg-white/90 backdrop-blur-sm shadow-sm hover:shadow-md"
+            placeholder="[ENTER TOPIC] เช่น: สอนปลูกต้นไม้"
+            className="w-full px-5 py-4 border-2 border-[#00ff41]/50 rounded-lg focus:ring-2 focus:ring-[#00ff41] focus:border-[#00ff41] transition-all text-base bg-[#050508] text-[#00ff41] font-mono placeholder:text-[#00ff41]/40 neon-border focus:neon-border hover:border-[#00ff41]"
             required
             disabled={loading}
           />
         </div>
 
         <div>
-          <label htmlFor="duration" className="block text-sm font-semibold text-gray-800 mb-2">
-            ความยาววิดีโอ (วินาที)
+          <label htmlFor="duration" className="block text-sm font-mono font-bold text-[#00ff41] mb-3 uppercase tracking-wider">
+            &gt; DURATION_SECONDS
           </label>
           <input
             type="number"
@@ -144,85 +144,90 @@ export default function VideoCreator() {
             onChange={(e) => setDuration(Number(e.target.value))}
             min={15}
             max={60}
-            className="w-full px-5 py-4 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all text-base bg-white/90 backdrop-blur-sm shadow-sm hover:shadow-md"
+            className="w-full px-5 py-4 border-2 border-[#00ff41]/50 rounded-lg focus:ring-2 focus:ring-[#00ff41] focus:border-[#00ff41] transition-all text-base bg-[#050508] text-[#00ff41] font-mono neon-border focus:neon-border hover:border-[#00ff41]"
             disabled={loading}
           />
-          <p className="text-xs text-gray-500 mt-2">แนะนำ: 15-60 วินาที</p>
+          <p className="text-xs text-[#00ffff] mt-3 font-mono opacity-70">[INFO] Recommended: 15-60 seconds</p>
         </div>
 
         <button
           type="submit"
           disabled={loading || !topic}
-          className="w-full bg-gradient-to-r from-purple-600 via-pink-600 to-red-600 text-white py-4 px-4 rounded-xl font-bold text-lg hover:from-purple-700 hover:via-pink-700 hover:to-red-700 disabled:from-gray-400 disabled:via-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed transition-all shadow-xl hover:shadow-2xl active:scale-[0.98] transform hover:scale-[1.02]"
+          className="w-full bg-gradient-to-r from-[#00ff41] to-[#00ffff] text-[#050508] py-5 px-6 rounded-lg font-bold text-lg font-mono uppercase tracking-wider hover:from-[#00ff88] hover:to-[#00ffff] disabled:from-gray-600 disabled:to-gray-600 disabled:cursor-not-allowed transition-all shadow-[0_0_20px_rgba(0,255,65,0.5)] hover:shadow-[0_0_30px_rgba(0,255,65,0.8)] active:scale-[0.98] transform hover:scale-[1.02] relative overflow-hidden"
         >
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full hover:translate-x-full transition-transform duration-1000"></div>
           {loading ? (
-            <span className="flex items-center justify-center gap-3">
-              <svg className="animate-spin h-6 w-6 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <span className="flex items-center justify-center gap-3 relative z-10">
+              <svg className="animate-spin h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
-              <span>{progress || 'กำลังสร้างวิดีโอ...'}</span>
+              <span className="font-mono">{progress || '[PROCESSING] Generating video...'}</span>
             </span>
           ) : (
-            <span className="flex items-center justify-center gap-2">
-              <span className="text-2xl">🎬</span>
-              <span>สร้างวิดีโอ</span>
+            <span className="flex items-center justify-center gap-3 relative z-10">
+              <span className="text-xl">▶</span>
+              <span>[EXECUTE] GENERATE VIDEO</span>
             </span>
           )}
         </button>
       </form>
 
       {error && (
-        <div className="bg-red-50 border-2 border-red-200 text-red-700 px-4 py-3 rounded-xl shadow-sm">
-          <p className="font-semibold flex items-center gap-2">
-            <span>❌</span> เกิดข้อผิดพลาด
+        <div className="bg-[#1a0000]/80 border-2 border-red-500/50 text-red-400 px-5 py-4 rounded-lg shadow-[0_0_20px_rgba(255,0,0,0.3)] font-mono">
+          <p className="font-bold flex items-center gap-2 text-red-400 uppercase tracking-wider">
+            <span className="text-[#ff0000]">[ERROR]</span> SYSTEM_FAILURE
           </p>
-          <p className="text-sm mt-2">{error}</p>
+          <p className="text-sm mt-3 text-red-300/80 font-mono">{error}</p>
         </div>
       )}
 
       {loading && progress && (
-        <div className="bg-blue-50 border-2 border-blue-200 text-blue-700 px-4 py-3 rounded-xl shadow-sm">
-          <div className="flex items-center gap-2">
-            <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <div className="bg-[#001a1a]/80 border-2 border-[#00ffff]/50 text-[#00ffff] px-5 py-4 rounded-lg shadow-[0_0_20px_rgba(0,255,255,0.3)] font-mono">
+          <div className="flex items-center gap-3">
+            <svg className="animate-spin h-5 w-5 text-[#00ffff]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
-            <p className="font-medium">{progress}</p>
+            <p className="font-mono text-sm uppercase tracking-wider">[STATUS] {progress}</p>
           </div>
         </div>
       )}
 
       {result && (
-        <div className="space-y-4">
-          <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 text-green-700 px-4 py-4 rounded-xl shadow-sm">
-            <p className="font-semibold text-lg mb-3 flex items-center gap-2">
-              <span>✅</span> สร้างวิดีโอสำเร็จ!
+        <div className="space-y-5">
+          <div className="bg-[#001a00]/80 border-2 border-[#00ff41]/50 text-[#00ff41] px-5 py-5 rounded-lg shadow-[0_0_30px_rgba(0,255,65,0.4)] font-mono">
+            <p className="font-bold text-lg mb-4 flex items-center gap-3 uppercase tracking-wider">
+              <span className="text-[#00ff41] animate-pulse">[SUCCESS]</span>
+              <span>VIDEO_GENERATED</span>
             </p>
             <button
               onClick={downloadVideo}
-              className="w-full bg-gradient-to-r from-green-500 to-emerald-500 text-white px-6 py-4 rounded-xl font-bold text-lg hover:from-green-600 hover:to-emerald-600 transition-all shadow-lg hover:shadow-xl active:scale-[0.98] transform hover:scale-[1.02]"
+              className="w-full bg-gradient-to-r from-[#00ff41] to-[#00ffff] text-[#050508] px-6 py-4 rounded-lg font-bold text-lg font-mono uppercase tracking-wider hover:from-[#00ff88] hover:to-[#00ffff] transition-all shadow-[0_0_20px_rgba(0,255,65,0.5)] hover:shadow-[0_0_30px_rgba(0,255,65,0.8)] active:scale-[0.98] transform hover:scale-[1.02] relative overflow-hidden"
             >
-              <span className="flex items-center justify-center gap-2">
-                <span className="text-xl">📥</span>
-                <span>ดาวน์โหลดวิดีโอ</span>
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full hover:translate-x-full transition-transform duration-1000"></div>
+              <span className="flex items-center justify-center gap-3 relative z-10">
+                <span className="text-xl">⬇</span>
+                <span>[DOWNLOAD] VIDEO_FILE</span>
               </span>
             </button>
           </div>
 
           {scriptData && (
-            <div className="space-y-4 bg-white p-5 rounded-xl border-2 border-gray-200 shadow-sm">
+            <div className="space-y-5 bg-[#0a0a0f]/80 p-5 rounded-lg border-2 border-[#00ffff]/30 shadow-[0_0_20px_rgba(0,255,255,0.2)]">
               <div>
-                <h3 className="font-semibold text-gray-900 mb-3 text-base">📝 สคริปต์:</h3>
-                <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed bg-gray-50 p-3 rounded-lg">{scriptData.script}</p>
+                <h3 className="font-bold text-[#00ffff] mb-3 text-sm font-mono uppercase tracking-wider">[SCRIPT_DATA]</h3>
+                <div className="bg-[#050508] border border-[#00ff41]/30 rounded p-4 font-mono text-sm text-[#00ff41] leading-relaxed whitespace-pre-wrap">
+                  {scriptData.script}
+                </div>
               </div>
 
               {scriptData.hashtags.length > 0 && (
                 <div>
-                  <h3 className="font-semibold text-gray-900 mb-3 text-base">🏷️ Hashtags:</h3>
+                  <h3 className="font-bold text-[#00ffff] mb-3 text-sm font-mono uppercase tracking-wider">[HASHTAGS]</h3>
                   <div className="flex flex-wrap gap-2">
                     {scriptData.hashtags.map((tag, index) => (
-                      <span key={index} className="text-sm bg-gradient-to-r from-primary-100 to-primary-50 text-primary-700 px-3 py-1.5 rounded-lg font-medium border border-primary-200">
+                      <span key={index} className="text-xs bg-[#00ff41]/10 border border-[#00ff41]/50 text-[#00ff41] px-3 py-2 rounded font-mono uppercase tracking-wider hover:bg-[#00ff41]/20 transition-all">
                         {tag}
                       </span>
                     ))}
