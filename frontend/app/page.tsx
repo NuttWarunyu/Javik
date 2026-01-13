@@ -1,6 +1,6 @@
 'use client'
 
-import VideoCreator from '@/components/VideoCreator'
+import VideoCreator from '../components/VideoCreator'
 
 export default function Home() {
   return (
