@@ -1,0 +1,14 @@
+node_modules/
+.env
+.env.local
+output/
+*.mp4
+*.mp3
+*.wav
+*.srt
+*.vtt
+temp/
+.DS_Store
+*.log
+
+
