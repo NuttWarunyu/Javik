@@ -37,11 +37,11 @@ async function generateScript(topic, duration = 60) {
 - keywords สำหรับหารูปภาพ 3-5 คำ`;
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-4',
+      model: 'gpt-4-turbo-preview', // หรือ 'gpt-4o' ที่รองรับ json_object
       messages: [
         {
           role: 'system',
-          content: 'คุณเป็นผู้เชี่ยวชาญในการสร้างสคริปต์วิดีโอสั้นสำหรับ TikTok และ YouTube Shorts ตอบเป็น JSON เท่านั้น',
+          content: 'คุณเป็นผู้เชี่ยวชาญในการสร้างสคริปต์วิดีโอสั้นสำหรับ TikTok และ YouTube Shorts ตอบเป็น JSON เท่านั้น ต้องตอบเป็น JSON format เท่านั้น',
         },
         {
           role: 'user',
