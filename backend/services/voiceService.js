@@ -55,7 +55,29 @@ async function generateWithElevenLabs(text, voiceId = '21m00Tcm4TlvDq8ikWAM') {
     return outputPath;
   } catch (error) {
     console.error('ElevenLabs error:', error.response?.data || error.message);
-    throw new Error(`Failed to generate voice with ElevenLabs: ${error.message}`);
+    
+    // Parse error details
+    let errorMessage = error.message;
+    if (error.response?.status === 401) {
+      errorMessage = 'ElevenLabs API Key is invalid or expired. Please check your ELEVENLABS_API_KEY in Railway environment variables.';
+    } else if (error.response?.status === 429) {
+      errorMessage = 'ElevenLabs API rate limit exceeded. Please try again later.';
+    } else if (error.response?.data) {
+      try {
+        const errorData = Buffer.isBuffer(error.response.data) 
+          ? JSON.parse(error.response.data.toString())
+          : error.response.data;
+        if (errorData.detail?.status) {
+          errorMessage = `ElevenLabs API Error: ${errorData.detail.status}`;
+        } else if (errorData.detail?.message) {
+          errorMessage = `ElevenLabs API Error: ${errorData.detail.message}`;
+        }
+      } catch (e) {
+        // Ignore parse errors
+      }
+    }
+    
+    throw new Error(`Failed to generate voice with ElevenLabs: ${errorMessage}`);
   }
 }
 

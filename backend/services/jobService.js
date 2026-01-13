@@ -24,6 +24,7 @@ function createJob(topic, duration, mode = 'draft', options = {}) {
     options, // Mode-specific options
     status: 'pending',
     progress: 'กำลังสร้างสคริปต์...',
+    logs: [], // Array of log entries
     createdAt: new Date(),
     updatedAt: new Date(),
     result: null,
@@ -32,6 +33,33 @@ function createJob(topic, duration, mode = 'draft', options = {}) {
   
   jobs.set(jobId, job);
   return jobId;
+}
+
+/**
+ * Add log entry to job
+ * @param {string} jobId - Job ID
+ * @param {string} message - Log message
+ * @param {string} type - Log type: 'info', 'success', 'error', 'warning'
+ */
+function addLog(jobId, message, type = 'info') {
+  const job = jobs.get(jobId);
+  if (!job) return;
+
+  const timestamp = new Date().toISOString();
+  const logEntry = {
+    timestamp,
+    message,
+    type,
+  };
+
+  job.logs.push(logEntry);
+  // Keep only last 100 logs
+  if (job.logs.length > 100) {
+    job.logs.shift();
+  }
+  
+  job.updatedAt = new Date();
+  jobs.set(jobId, job);
 }
 
 /**
@@ -76,6 +104,7 @@ async function processJob(jobId) {
 
   try {
     updateJob(jobId, { status: 'processing', progress: 'กำลังสร้างสคริปต์...' });
+    addLog(jobId, `[SYSTEM] Initializing video generation for topic: "${job.topic}"`, 'info');
 
     const contentService = require('./contentService');
     const voiceService = require('./voiceService');
@@ -85,28 +114,43 @@ async function processJob(jobId) {
 
     // Step 1: Generate script
     updateJob(jobId, { progress: 'กำลังสร้างสคริปต์...' });
+    addLog(jobId, '[STEP 1/5] Connecting to OpenAI API...', 'info');
+    addLog(jobId, '[STEP 1/5] Generating script with GPT-4 Turbo...', 'info');
     const scriptData = await contentService.generateScript(job.topic, job.duration);
+    addLog(jobId, `[STEP 1/5] ✓ Script generated successfully (${scriptData.script.length} characters)`, 'success');
+    addLog(jobId, `[STEP 1/5] Keywords extracted: ${scriptData.keywords.join(', ')}`, 'info');
 
     // Step 2: Generate voice
     updateJob(jobId, { progress: 'กำลังสร้างเสียงพูด...' });
+    addLog(jobId, '[STEP 2/5] Connecting to ElevenLabs API...', 'info');
+    addLog(jobId, '[STEP 2/5] Generating AI voice...', 'info');
     const audioPath = await voiceService.generateVoice(scriptData.script);
+    addLog(jobId, `[STEP 2/5] ✓ Voice generated successfully: ${path.basename(audioPath)}`, 'success');
 
     // Step 3: Search and download images
     updateJob(jobId, { progress: 'กำลังหารูปภาพ...' });
+    addLog(jobId, '[STEP 3/5] Connecting to Pexels API...', 'info');
+    addLog(jobId, `[STEP 3/5] Searching images for keywords: ${scriptData.keywords.join(', ')}`, 'info');
     const imagePaths = await imageService.searchAndDownloadImages(
       scriptData.keywords,
       2
     );
+    addLog(jobId, `[STEP 3/5] ✓ Downloaded ${imagePaths.length} images`, 'success');
 
     // Step 4: Create Ken Burns video
     updateJob(jobId, { progress: 'กำลังสร้างเอฟเฟกต์ Ken Burns...' });
+    addLog(jobId, '[STEP 4/5] Initializing FFmpeg...', 'info');
+    addLog(jobId, '[STEP 4/5] Creating Ken Burns effects...', 'info');
     const videoPath = await kenBurnsService.createVideoFromImages(
       imagePaths,
       job.duration
     );
+    addLog(jobId, `[STEP 4/5] ✓ Video created: ${path.basename(videoPath)}`, 'success');
 
     // Step 5: Create videos based on mode
     updateJob(jobId, { progress: 'กำลังรวมวิดีโอและเสียง...' });
+    addLog(jobId, '[STEP 5/5] Combining audio and video...', 'info');
+    addLog(jobId, '[STEP 5/5] Adding captions overlay...', 'info');
     const timestamp = Date.now();
     const baseFilename = `video_${timestamp}`;
 
@@ -168,6 +212,8 @@ async function processJob(jobId) {
       console.warn('Cleanup error:', cleanupError);
     }
     
+    addLog(jobId, '[SYSTEM] ✓ Video generation completed successfully!', 'success');
+    addLog(jobId, `[SYSTEM] Output files: ${Object.keys(result).join(', ')}`, 'info');
     updateJob(jobId, {
       status: 'completed',
       progress: 'สร้างวิดีโอสำเร็จ!',
@@ -175,10 +221,27 @@ async function processJob(jobId) {
     });
   } catch (error) {
     console.error('Job processing error:', error);
+    const errorMessage = error.message || 'Failed to create video';
+    addLog(jobId, `[ERROR] ${errorMessage}`, 'error');
+    
+    // Parse error details if available
+    if (error.response?.data) {
+      try {
+        const errorData = Buffer.isBuffer(error.response.data) 
+          ? JSON.parse(error.response.data.toString())
+          : error.response.data;
+        if (errorData.detail?.status) {
+          addLog(jobId, `[ERROR] ElevenLabs API Error: ${errorData.detail.status}`, 'error');
+        }
+      } catch (e) {
+        // Ignore parse errors
+      }
+    }
+    
     updateJob(jobId, {
       status: 'error',
       progress: 'เกิดข้อผิดพลาด',
-      error: error.message || 'Failed to create video',
+      error: errorMessage,
     });
   }
 }
@@ -205,5 +268,6 @@ module.exports = {
   getJob,
   updateJob,
   processJob,
+  addLog,
 };
 

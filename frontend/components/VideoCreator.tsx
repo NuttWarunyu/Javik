@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
 
 interface VideoResult {
@@ -30,6 +30,8 @@ export default function VideoCreator() {
   const [jobId, setJobId] = useState<string | null>(null)
   const [jobStatus, setJobStatus] = useState<JobStatus>('idle')
   const [progress, setProgress] = useState('')
+  const [logs, setLogs] = useState<Array<{timestamp: string, message: string, type: string}>>([])
+  const logsEndRef = useRef<HTMLDivElement>(null)
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003'
 
@@ -40,13 +42,28 @@ export default function VideoCreator() {
     const interval = setInterval(async () => {
       try {
         const response = await axios.get(`${apiUrl}/api/video/status/${jobId}`)
-        const { status, progress: jobProgress, video, script, hashtags, captions, error: jobError } = response.data
+        const { status, progress: jobProgress, video, script, hashtags, captions, error: jobError, logs: jobLogs } = response.data
 
         setProgress(jobProgress || '')
+        
+        // Update logs
+        if (jobLogs && Array.isArray(jobLogs)) {
+          setLogs(jobLogs)
+        }
 
         if (status === 'completed' && video) {
           setJobStatus('completed')
           setResult(video)
+          setScriptData({
+            script: script || '',
+            hashtags: hashtags || [],
+            captions: captions || [],
+          })
+          setLoading(false)
+        } else if (status === 'completed' && (response.data.draft || response.data.noVoice)) {
+          // Draft mode
+          setJobStatus('completed')
+          setResult(response.data.draft || response.data.noVoice)
           setScriptData({
             script: script || '',
             hashtags: hashtags || [],
@@ -68,6 +85,13 @@ export default function VideoCreator() {
     return () => clearInterval(interval)
   }, [jobId, jobStatus, apiUrl])
 
+  // Auto-scroll logs to bottom
+  useEffect(() => {
+    if (logsEndRef.current) {
+      logsEndRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [logs])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
@@ -76,6 +100,7 @@ export default function VideoCreator() {
     setScriptData(null)
     setJobStatus('creating')
     setProgress('')
+    setLogs([])
 
     try {
       const response = await axios.post(`${apiUrl}/api/video/create`, {
@@ -182,15 +207,61 @@ export default function VideoCreator() {
         </div>
       )}
 
-      {loading && progress && (
-        <div className="bg-[#001a1a]/80 border-2 border-[#00ffff]/50 text-[#00ffff] px-5 py-4 rounded-lg shadow-[0_0_20px_rgba(0,255,255,0.3)] font-mono">
-          <div className="flex items-center gap-3">
-            <svg className="animate-spin h-5 w-5 text-[#00ffff]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            <p className="font-mono text-sm uppercase tracking-wider">[STATUS] {progress}</p>
+      {loading && (
+        <div className="space-y-4">
+          {progress && (
+            <div className="bg-[#001a1a]/80 border-2 border-[#00ffff]/50 text-[#00ffff] px-5 py-4 rounded-lg shadow-[0_0_20px_rgba(0,255,255,0.3)] font-mono">
+            <div className="flex items-center gap-3">
+              <svg className="animate-spin h-5 w-5 text-[#00ffff]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <p className="font-mono text-sm uppercase tracking-wider">[STATUS] {progress}</p>
+            </div>
           </div>
+          )}
+
+          {/* Log Viewer */}
+          {logs.length > 0 && (
+            <div className="log-viewer bg-[#050508] border-2 border-[#00ff41]/30 rounded-lg p-4 font-mono text-xs max-h-64 overflow-y-auto shadow-[0_0_30px_rgba(0,255,65,0.2)]">
+              <div className="flex items-center gap-2 mb-3 pb-2 border-b border-[#00ff41]/20">
+                <span className="text-[#00ff41] animate-pulse">▶</span>
+                <span className="text-[#00ffff] uppercase tracking-wider">[SYSTEM LOGS]</span>
+                <span className="text-[#00ff41]/50 ml-auto">({logs.length} entries)</span>
+              </div>
+              <div className="space-y-1">
+                {logs.map((log, index) => {
+                  const time = new Date(log.timestamp).toLocaleTimeString('en-US', { hour12: false })
+                  const getLogColor = () => {
+                    switch (log.type) {
+                      case 'success': return 'text-[#00ff41]'
+                      case 'error': return 'text-[#ff0000]'
+                      case 'warning': return 'text-[#ffff00]'
+                      default: return 'text-[#00ffff]'
+                    }
+                  }
+                  const getPrefix = () => {
+                    switch (log.type) {
+                      case 'success': return '[✓]'
+                      case 'error': return '[✗]'
+                      case 'warning': return '[!]'
+                      default: return '[>]'
+                    }
+                  }
+                  
+                  return (
+                    <div key={index} className={`${getLogColor()} flex items-start gap-2 font-mono`}>
+                      <span className="text-[#00ff41]/50 shrink-0">[{time}]</span>
+                      <span className="text-[#00ff41]/70 shrink-0">{getPrefix()}</span>
+                      <span className="flex-1">{log.message}</span>
+                    </div>
+                  )
+                })}
+              </div>
+              {/* Auto scroll anchor */}
+              <div ref={logsEndRef}></div>
+            </div>
+          )}
         </div>
       )}
 

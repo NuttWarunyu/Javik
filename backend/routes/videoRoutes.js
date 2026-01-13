@@ -285,6 +285,7 @@ router.get('/status/:jobId', (req, res) => {
       success: true,
       status: job.status,
       progress: job.progress,
+      logs: job.logs || [], // Include logs
     };
 
     if (job.status === 'completed' && job.result) {
