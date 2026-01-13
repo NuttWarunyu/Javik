@@ -15,14 +15,15 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci --only=production
+# Use npm install instead of npm ci (npm ci requires package-lock.json)
+RUN npm install --omit=dev
 
 # Copy backend files
 COPY backend/ ./backend/
 COPY scripts/ ./scripts/
 
 # Create output directories
-RUN mkdir -p output/videos output/captions output/temp
+RUN mkdir -p output/videos output/captions output/temp output/draft output/no_voice output/scripts
 
 # Set environment variables
 ENV NODE_ENV=production
