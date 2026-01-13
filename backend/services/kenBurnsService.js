@@ -191,8 +191,45 @@ async function createVideoFromImages(imagePaths, totalDuration) {
   });
 }
 
+/**
+ * Create solid color background video (fallback when no images)
+ * @param {number} duration - Duration in seconds
+ * @param {string} color - Hex color code (default: '#1a1a2e' - dark blue)
+ * @param {number} width - Video width (default: 1080)
+ * @param {number} height - Video height (default: 1920 for 9:16)
+ * @returns {Promise<string>} Path to generated video
+ */
+async function createSolidColorVideo(duration, color = '#1a1a2e', width = 1080, height = 1920) {
+  await ensureOutputDir();
+  const outputPath = path.join(OUTPUT_DIR, `solid_${Date.now()}.mp4`);
+
+  return new Promise((resolve, reject) => {
+    // Create solid color video using FFmpeg
+    ffmpeg()
+      .input(`color=c=${color}:size=${width}x${height}:duration=${duration}:rate=30`)
+      .inputOptions(['-f', 'lavfi'])
+      .outputOptions([
+        '-c:v', 'libx264',
+        '-preset', 'medium',
+        '-crf', '23',
+        '-pix_fmt', 'yuv420p',
+        '-t', duration.toString(),
+      ])
+      .output(outputPath)
+      .on('end', () => {
+        resolve(outputPath);
+      })
+      .on('error', (err) => {
+        console.error('FFmpeg solid color error:', err);
+        reject(new Error(`Failed to create solid color video: ${err.message}`));
+      })
+      .run();
+  });
+}
+
 module.exports = {
   createKenBurnsEffect,
   createVideoFromImages,
+  createSolidColorVideo,
 };
 
