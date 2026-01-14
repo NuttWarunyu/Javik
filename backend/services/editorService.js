@@ -150,7 +150,7 @@ async function addCaptionsOverlay(videoPath, captions, filename = null, outputDi
   const outputFilename = filename || `video_captions_${Date.now()}.mp4`;
   const targetDir = outputDir || OUTPUT_DIR;
   const outputPath = path.join(targetDir, outputFilename);
-  
+
   // Ensure parent directory exists
   const dirPath = path.dirname(outputPath);
   await fs.mkdir(dirPath, { recursive: true });
@@ -162,36 +162,7 @@ async function addCaptionsOverlay(videoPath, captions, filename = null, outputDi
     throw new Error(`Failed to create output directory: ${dirPath} - ${err.message}`);
   }
 
-  // For now, skip captions overlay to ensure video creation works
-  // TODO: Add captions overlay later when drawtext filter is properly configured
-  const filters = [];
-  
-  // Temporarily disabled captions to ensure video creation works
-  // Uncomment below when ready to add captions:
-  /*
-  captions.forEach((caption, index) => {
-    const startTime = caption.startTime;
-    const endTime = startTime + caption.duration;
-    
-    filters.push(
-      `drawtext=text='${caption.text.replace(/'/g, "\\'")}':` +
-      `fontsize=60:fontcolor=white:x=(w-text_w)/2:y=h-th-100:enable='between(t,${startTime},${endTime})'`
-    );
-  });
-  */
-
   return new Promise(async (resolve, reject) => {
-    // Double-check directory exists before FFmpeg runs
-    try {
-      const outputDir = path.dirname(outputPath);
-      await fs.mkdir(outputDir, { recursive: true });
-      await fs.access(outputDir);
-    } catch (dirError) {
-      console.error('Failed to ensure output directory:', dirError);
-      reject(new Error(`Failed to create output directory: ${dirError.message}`));
-      return;
-    }
-    
     // If no captions, just copy the video
     if (!captions || captions.length === 0) {
       try {
@@ -203,26 +174,58 @@ async function addCaptionsOverlay(videoPath, captions, filename = null, outputDi
         return;
       }
     }
-    
-    // Simple approach: copy video without captions overlay for now
-    // This ensures video creation works reliably
-    // Captions can be added later when drawtext filter is properly configured
-    
+    // Double-check directory exists before FFmpeg runs
     try {
-      // Just copy the video file (no captions overlay for now)
-      await fs.copyFile(videoPath, outputPath);
-      console.log(`Video copied successfully (without captions overlay): ${outputPath}`);
-      resolve(outputPath);
-    } catch (copyErr) {
-      console.error('Failed to copy video:', copyErr);
-      reject(new Error(`Failed to create video: ${copyErr.message}`));
+      const outputDir = path.dirname(outputPath);
+      await fs.mkdir(outputDir, { recursive: true });
+      await fs.access(outputDir);
+    } catch (dirError) {
+      console.error('Failed to ensure output directory:', dirError);
+      reject(new Error(`Failed to create output directory: ${dirError.message}`));
+      return;
     }
     
-    /* 
-    // TODO: Re-enable captions overlay when drawtext filter is working
+    // Build drawtext filters for animated captions (like speech bubbles)
+    // Style: Bold text with background box, animated fade in/out
+  const filters = [];
+
+  captions.forEach((caption, index) => {
+    const startTime = caption.startTime;
+    const endTime = startTime + caption.duration;
+      // Escape special characters for FFmpeg
+      const text = caption.text
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/:/g, "\\:")
+        .replace(/\[/g, "\\[")
+        .replace(/\]/g, "\\]");
+      
+      // Calculate font size based on video height (9:16 format = 1920px height)
+      const fontSize = 70; // Good size for mobile viewing
+      const yPos = 'h-th-150'; // Position from bottom (150px padding)
+      
+      // Create speech bubble effect with background box
+      // Style: White text, black semi-transparent background, rounded corners effect
+      const filterStr = 
+        `drawtext=` +
+        `text='${text}':` +
+        `fontsize=${fontSize}:` +
+      `fontcolor=white:` +
+        `box=1:` + // Enable background box
+        `boxcolor=black@0.75:` + // Semi-transparent black background (75% opacity)
+        `boxborderw=20:` + // Border width (padding)
+        `x=(w-text_w)/2:` + // Center horizontally
+        `y=${yPos}:` + // Position from bottom
+        `enable='between(t,${startTime},${endTime})'`; // Show only during caption time
+      
+      filters.push(filterStr);
+  });
+
+    // Use FFmpeg to add captions overlay
     const ffmpegCommand = ffmpeg(videoPath);
     
     if (filters.length > 0) {
+      // Combine all filters
       ffmpegCommand.videoFilters(filters);
     }
     
@@ -234,22 +237,33 @@ async function addCaptionsOverlay(videoPath, captions, filename = null, outputDi
         '-pix_fmt', 'yuv420p',
       ])
       .output(outputPath)
+      .on('start', (commandLine) => {
+        console.log('FFmpeg caption command:', commandLine);
+      })
       .on('end', () => {
+        // Verify file was created
         fs.access(outputPath)
-          .then(() => resolve(outputPath))
-          .catch((err) => reject(new Error(`Output file was not created: ${err.message}`)));
+          .then(() => {
+            console.log(`✓ Captions overlay added successfully: ${outputPath}`);
+        resolve(outputPath);
+          })
+          .catch((err) => {
+            console.error('Output file verification failed:', err);
+            reject(new Error(`Output file was not created: ${err.message}`));
+          });
       })
       .on('error', async (err) => {
+        console.error('FFmpeg caption error:', err);
         // Fallback: copy video without captions
         try {
+          console.log('⚠ Falling back to video without captions overlay');
           await fs.copyFile(videoPath, outputPath);
           resolve(outputPath);
         } catch (copyErr) {
-          reject(new Error(`Failed to add captions: ${err.message}`));
+          reject(new Error(`Failed to add captions: ${err.message}. Fallback also failed: ${copyErr.message}`));
         }
       })
       .run();
-    */
   });
 }
 
