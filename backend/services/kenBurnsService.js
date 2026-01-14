@@ -26,118 +26,89 @@ async function ensureOutputDir() {
  */
 async function createKenBurnsEffect(imagePath, duration, effect = 'zoomIn') {
   await ensureOutputDir();
+  
+  // Verify image exists and is readable
+  try {
+    await fs.access(imagePath);
+  } catch (err) {
+    throw new Error(`Image file not found or not accessible: ${imagePath}`);
+  }
+  
   const outputPath = path.join(OUTPUT_DIR, `kenburns_${Date.now()}_${Math.random().toString(36).substring(7)}.mp4`);
 
   // TikTok/Shorts format: 1080x1920 (9:16)
   const width = 1080;
   const height = 1920;
-
-  // Effect configurations
-  const effects = {
-    zoomIn: {
-      scale: 'scale=iw*1.2:ih*1.2',
-      crop: `crop=${width}:${height}`,
-      x: '(iw-ow)/2',
-      y: '(ih-oh)/2',
-      zoom: `scale=iw*1.5:ih*1.5,crop=${width}:${height}:((iw-${width})/2):((ih-${height})/2)`,
-    },
-    zoomOut: {
-      scale: `scale=${width}:${height}`,
-      zoom: `scale=iw*0.8:ih*0.8,crop=${width}:${height}:((iw-${width})/2):((ih-${height})/2)`,
-    },
-    panLeft: {
-      scale: `scale=iw*1.3:ih*1.3`,
-      crop: `crop=${width}:${height}`,
-      x: '0',
-      y: '(ih-oh)/2',
-      pan: `crop=${width}:${height}:t*((iw-${width})/${duration}):((ih-${height})/2)`,
-    },
-    panRight: {
-      scale: `scale=iw*1.3:ih*1.3`,
-      crop: `crop=${width}:${height}`,
-      pan: `crop=${width}:${height}:(iw-${width})-t*((iw-${width})/${duration}):((ih-${height})/2)`,
-    },
-    panUp: {
-      scale: `scale=iw*1.3:ih*1.3`,
-      crop: `crop=${width}:${height}`,
-      pan: `crop=${width}:${height}:((iw-${width})/2):(ih-${height})-t*((ih-${height})/${duration})`,
-    },
-    panDown: {
-      scale: `scale=iw*1.3:ih*1.3`,
-      crop: `crop=${width}:${height}`,
-      pan: `crop=${width}:${height}:((iw-${width})/2):t*((ih-${height})/${duration})`,
-    },
-  };
-
-  const config = effects[effect] || effects.zoomIn;
+  const fps = 30;
 
   return new Promise((resolve, reject) => {
-    let command = ffmpeg(imagePath)
-      .inputOptions(['-loop', '1', '-t', duration.toString()])
-      .videoFilters([
-        {
-          filter: 'scale',
-          options: `iw*1.3:ih*1.3`,
-        },
-        {
-          filter: 'crop',
-          options: `${width}:${height}`,
-        },
-        {
-          filter: 'zoompan',
-          options: `z='min(zoom+0.0015,1.5)':d=${duration * 30}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${width}x${height}`,
-        },
+    // Use simpler approach: scale + crop with static zoom (more compatible)
+    let filterComplex = '';
+    
+    if (effect === 'zoomIn') {
+      // Zoom in: scale larger then crop center
+      filterComplex = `scale=iw*1.5:ih*1.5,crop=${width}:${height}:(iw-${width})/2:(ih-${height})/2`;
+    } else if (effect === 'zoomOut') {
+      // Zoom out: scale to fit
+      filterComplex = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black`;
+    } else if (effect === 'panLeft') {
+      // Pan left: scale larger, crop moving left
+      filterComplex = `scale=iw*1.3:ih*1.3,crop=${width}:${height}:0:(ih-${height})/2`;
+    } else if (effect === 'panRight') {
+      // Pan right: scale larger, crop moving right
+      filterComplex = `scale=iw*1.3:ih*1.3,crop=${width}:${height}:(iw-${width}):(ih-${height})/2`;
+    } else {
+      // Default: center crop
+      filterComplex = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black`;
+    }
+
+    const command = ffmpeg(imagePath)
+      .inputOptions([
+        '-loop', '1',
+        '-framerate', fps.toString(),
+        '-t', duration.toString(),
       ])
+      .videoFilters(filterComplex)
       .outputOptions([
         '-c:v', 'libx264',
         '-preset', 'medium',
         '-crf', '23',
         '-pix_fmt', 'yuv420p',
-        '-r', '30',
+        '-r', fps.toString(),
         '-t', duration.toString(),
+        '-movflags', '+faststart',
       ])
       .size(`${width}x${height}`)
       .output(outputPath)
+      .on('start', (commandLine) => {
+        console.log('FFmpeg command:', commandLine);
+      })
+      .on('progress', (progress) => {
+        if (progress.percent) {
+          console.log(`Processing: ${Math.round(progress.percent)}% done`);
+        }
+      })
       .on('end', () => {
-        resolve(outputPath);
+        // Verify output file exists
+        fs.access(outputPath)
+          .then(() => {
+            console.log(`Ken Burns video created: ${outputPath}`);
+            resolve(outputPath);
+          })
+          .catch((err) => {
+            reject(new Error(`Output file was not created: ${err.message}`));
+          });
       })
       .on('error', (err) => {
-        console.error('FFmpeg error:', err);
+        console.error('FFmpeg error details:', {
+          message: err.message,
+          code: err.code,
+          signal: err.signal,
+          imagePath,
+          outputPath,
+        });
         reject(new Error(`Failed to create Ken Burns effect: ${err.message}`));
       });
-
-    // Apply effect-specific filters
-    if (effect === 'zoomIn') {
-      command = command.videoFilters([
-        {
-          filter: 'scale',
-          options: 'iw*1.5:ih*1.5',
-        },
-        {
-          filter: 'crop',
-          options: `${width}:${height}:((iw-${width})/2):((ih-${height})/2)`,
-        },
-        {
-          filter: 'zoompan',
-          options: `z='min(zoom+0.002,1.5)':d=${duration * 30}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${width}x${height}`,
-        },
-      ]);
-    } else if (effect === 'zoomOut') {
-      command = command.videoFilters([
-        {
-          filter: 'scale',
-          options: 'iw*1.5:ih*1.5',
-        },
-        {
-          filter: 'crop',
-          options: `${width}:${height}:((iw-${width})/2):((ih-${height})/2)`,
-        },
-        {
-          filter: 'zoompan',
-          options: `z='if(lte(zoom,1.0),1.5,max(1.0,zoom-0.0015))':d=${duration * 30}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${width}x${height}`,
-        },
-      ]);
-    }
 
     command.run();
   });
@@ -152,15 +123,35 @@ async function createKenBurnsEffect(imagePath, duration, effect = 'zoomIn') {
 async function createVideoFromImages(imagePaths, totalDuration) {
   await ensureOutputDir();
   
+  // Validate input
+  if (!imagePaths || imagePaths.length === 0) {
+    throw new Error('No images provided. Cannot create video from empty image array.');
+  }
+  
+  // Filter out invalid paths
+  const validImagePaths = [];
+  for (const imgPath of imagePaths) {
+    try {
+      await fs.access(imgPath);
+      validImagePaths.push(imgPath);
+    } catch (err) {
+      console.warn(`Image path not accessible: ${imgPath}`);
+    }
+  }
+  
+  if (validImagePaths.length === 0) {
+    throw new Error('No valid images found. All image paths are invalid or inaccessible.');
+  }
+  
   const effects = ['zoomIn', 'zoomOut', 'panLeft', 'panRight'];
-  const durationPerImage = totalDuration / imagePaths.length;
+  const durationPerImage = totalDuration / validImagePaths.length;
   
   const videoPaths = [];
   
   // Create Ken Burns videos for each image
-  for (let i = 0; i < imagePaths.length; i++) {
+  for (let i = 0; i < validImagePaths.length; i++) {
     const effect = effects[i % effects.length];
-    const videoPath = await createKenBurnsEffect(imagePaths[i], durationPerImage, effect);
+    const videoPath = await createKenBurnsEffect(validImagePaths[i], durationPerImage, effect);
     videoPaths.push(videoPath);
   }
 
