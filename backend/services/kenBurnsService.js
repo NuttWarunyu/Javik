@@ -42,33 +42,17 @@ async function createKenBurnsEffect(imagePath, duration, effect = 'zoomIn') {
   const fps = 30;
 
   return new Promise((resolve, reject) => {
-    // Use simpler approach: scale + crop with static zoom (more compatible)
-    let filterComplex = '';
+    // Use simplest approach: scale to exact size (most compatible)
+    // Avoid all expressions - use only fixed values
     
-    if (effect === 'zoomIn') {
-      // Zoom in: scale larger then crop center
-      filterComplex = `scale=iw*1.5:ih*1.5,crop=${width}:${height}:(iw-${width})/2:(ih-${height})/2`;
-    } else if (effect === 'zoomOut') {
-      // Zoom out: scale to fit
-      filterComplex = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black`;
-    } else if (effect === 'panLeft') {
-      // Pan left: scale larger, crop moving left
-      filterComplex = `scale=iw*1.3:ih*1.3,crop=${width}:${height}:0:(ih-${height})/2`;
-    } else if (effect === 'panRight') {
-      // Pan right: scale larger, crop moving right
-      filterComplex = `scale=iw*1.3:ih*1.3,crop=${width}:${height}:(iw-${width}):(ih-${height})/2`;
-    } else {
-      // Default: center crop
-      filterComplex = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black`;
-    }
-
     const command = ffmpeg(imagePath)
       .inputOptions([
         '-loop', '1',
         '-framerate', fps.toString(),
         '-t', duration.toString(),
       ])
-      .videoFilters(filterComplex)
+      // Simple scale to exact size - most compatible approach
+      .videoFilters(`scale=${width}:${height}`)
       .outputOptions([
         '-c:v', 'libx264',
         '-preset', 'medium',
