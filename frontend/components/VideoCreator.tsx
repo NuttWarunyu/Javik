@@ -17,6 +17,7 @@ interface ScriptData {
   cta?: string
   hashtags: string[]
   keywords?: string[]
+  imageVarietyKeywords?: string[]
   captions: Array<{
     text: string
     startTime: number
@@ -425,6 +426,7 @@ export default function VideoCreator() {
         <ImageSelector
           topic={topic}
           keywords={scriptData.keywords || []}
+          imageVarietyKeywords={scriptData.imageVarietyKeywords || scriptData.keywords || []}
           onSelect={handleImageSelect}
           onCancel={() => {
             setShowImageSelector(false)

@@ -48,6 +48,7 @@ async function generateScript(topic, duration = 60) {
 - แคปชั่น: สั้น 3-5 วินาทีต่อข้อความ, ใช้ตัวหนา, สีสัน, emoji
 - hashtags: 10-15 อัน รวม trending hashtags, niche hashtags, และ branded hashtags
 - keywords สำหรับหารูปภาพ: ต้องเป็นคำที่ตรงกับหัวข้อ "${topic}" โดยตรง (เช่น ถ้าหัวข้อคือ "Red Handfish" keywords ต้องเป็น "red handfish", "handfish", "fish" ไม่ใช่คำทั่วไป)
+- imageVarietyKeywords: สร้าง keywords ที่หลากหลายสำหรับหารูปภาพ (เช่น ถ้าหัวข้อคือ "เสือ" ให้สร้าง "tiger hunting", "tiger sleeping", "tiger running", "tiger cub", "tiger in forest" เพื่อให้ได้รูปภาพที่หลากหลาย ไม่ซ้ำกัน)
 
 รูปแบบการตอบต้องมี:
 {
@@ -57,7 +58,8 @@ async function generateScript(topic, duration = 60) {
   "cta": "CALL-TO-ACTION สำหรับท้ายวิดีโอ",
   "captions": [...],
   "hashtags": [...],
-  "keywords": [...]
+  "keywords": [...],
+  "imageVarietyKeywords": ["keyword1 action", "keyword2 scene", "keyword3 behavior", ...]
 }`;
 
     const response = await openai.chat.completions.create({
@@ -103,6 +105,7 @@ async function generateScript(topic, duration = 60) {
       captions: content.captions || [],
       hashtags: content.hashtags || [],
       keywords: content.keywords || [],
+      imageVarietyKeywords: content.imageVarietyKeywords || content.keywords || [],
     };
   } catch (error) {
     console.error('Error generating script:', error);

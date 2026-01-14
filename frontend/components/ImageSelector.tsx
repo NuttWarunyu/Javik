@@ -13,6 +13,7 @@ interface ImageInfo {
 interface ImageSelectorProps {
   topic: string
   keywords: string[]
+  imageVarietyKeywords?: string[]
   onSelect: (selectedImageUrls: string[]) => void
   onCancel: () => void
   minImages?: number
@@ -21,7 +22,8 @@ interface ImageSelectorProps {
 
 export default function ImageSelector({ 
   topic, 
-  keywords, 
+  keywords,
+  imageVarietyKeywords = [],
   onSelect, 
   onCancel,
   minImages = 3,
@@ -46,6 +48,7 @@ export default function ImageSelector({
       const response = await axios.post(`${apiUrl}/api/video/search-images`, {
         topic,
         keywords,
+        imageVarietyKeywords,
         maxImages: 20, // Search for 20 images, user selects from them
       })
 

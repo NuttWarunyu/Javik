@@ -199,26 +199,44 @@ async function downloadImage(url) {
  * @param {string} topic - Topic for more specific search
  * @returns {Promise<Array<{url: string, source: string, thumbnail: string}>>} Array of image info objects
  */
-async function searchImagesForSelection(keywords, maxImages = 20, topic = '') {
+async function searchImagesForSelection(keywords, maxImages = 20, topic = '', imageVarietyKeywords = []) {
   const imageResults = [];
   const searchQueries = [];
   
-  // Build search queries - prioritize exact topic match
+  // Build diverse search queries for variety
+  // 1. Add topic variations
   if (topic && topic.trim()) {
     searchQueries.push(topic.trim());
+    // Add English translation if Thai
     if (/[\u0E00-\u0E7F]/.test(topic)) {
       searchQueries.push(topic.trim() + ' fish');
     }
   }
   
+  // 2. Add variety keywords first (more diverse)
+  const varietyKeywords = imageVarietyKeywords.length > 0 ? imageVarietyKeywords : keywords;
+  for (const keyword of varietyKeywords) {
+    if (keyword && keyword.trim() && !searchQueries.includes(keyword.trim())) {
+      searchQueries.push(keyword.trim());
+    }
+  }
+  
+  // 3. Add regular keywords (if different from variety)
   for (const keyword of keywords) {
     if (keyword && keyword.trim() && !searchQueries.includes(keyword.trim())) {
       searchQueries.push(keyword.trim());
     }
   }
   
-  // Search from multiple sources
-  for (const query of searchQueries) {
+  // Limit queries to avoid too many API calls
+  const maxQueries = Math.min(searchQueries.length, 10);
+  const selectedQueries = searchQueries.slice(0, maxQueries);
+  
+  // Search from multiple sources with variety
+  // Limit images per query to ensure variety (max 2-3 per query)
+  const imagesPerQuery = Math.max(2, Math.floor(maxImages / Math.max(selectedQueries.length, 1)));
+  
+  for (const query of selectedQueries) {
     if (imageResults.length >= maxImages) break;
     
     // 1. Unsplash
@@ -227,8 +245,9 @@ async function searchImagesForSelection(keywords, maxImages = 20, topic = '') {
         const response = await axios.get('https://api.unsplash.com/search/photos', {
           params: {
             query,
-            per_page: Math.min(5, maxImages - imageResults.length),
+            per_page: Math.min(imagesPerQuery, maxImages - imageResults.length),
             orientation: 'portrait',
+            order_by: 'relevant', // Get most relevant first
           },
           headers: {
             Authorization: `Client-ID ${process.env.UNSPLASH_ACCESS_KEY}`,
@@ -256,7 +275,7 @@ async function searchImagesForSelection(keywords, maxImages = 20, topic = '') {
         const response = await axios.get('https://api.pexels.com/v1/search', {
           params: {
             query,
-            per_page: Math.min(5, maxImages - imageResults.length),
+            per_page: Math.min(imagesPerQuery, maxImages - imageResults.length),
             orientation: 'portrait',
           },
           headers: {

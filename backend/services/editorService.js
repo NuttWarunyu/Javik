@@ -88,6 +88,11 @@ async function combineAudioVideoWithCaptions(videoPath, audioPath, captions, fil
   const outputFilename = filename || `video_${Date.now()}.mp4`;
   const outputPath = path.join(OUTPUT_DIR, outputFilename);
 
+  // If no audio, return video with captions only
+  if (!audioPath) {
+    return addCaptionsOverlay(videoPath, captions, outputFilename, OUTPUT_DIR);
+  }
+
   // Create SRT file if captions provided
   let srtPath = null;
   if (captions && captions.length > 0) {

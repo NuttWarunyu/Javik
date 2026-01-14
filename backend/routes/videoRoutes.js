@@ -536,7 +536,7 @@ router.post('/generate-script', async (req, res) => {
  */
 router.post('/search-images', async (req, res) => {
   try {
-    const { topic, keywords = [], maxImages = 20 } = req.body;
+    const { topic, keywords = [], imageVarietyKeywords = [], maxImages = 20 } = req.body;
 
     if (!topic && (!keywords || keywords.length === 0)) {
       return res.status(400).json({
@@ -548,7 +548,8 @@ router.post('/search-images', async (req, res) => {
     const images = await imageService.searchImagesForSelection(
       keywords,
       maxImages,
-      topic
+      topic,
+      imageVarietyKeywords
     );
 
     res.json({
