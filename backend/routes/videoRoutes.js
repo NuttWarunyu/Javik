@@ -5,6 +5,7 @@ const multer = require('multer');
 const jobService = require('../services/jobService');
 const editorService = require('../services/editorService');
 const backgroundRemoverService = require('../services/backgroundRemoverService');
+const imageService = require('../services/imageService');
 const path = require('path');
 const fs = require('fs').promises;
 
@@ -301,7 +302,12 @@ router.get('/status/:jobId', (req, res) => {
         response.video = job.result.video;
       }
       response.scriptText = job.result.script;
+      response.script = job.result.script;
+      response.hook = job.result.hook || '';
+      response.midHook = job.result.midHook || '';
+      response.cta = job.result.cta || '';
       response.hashtags = job.result.hashtags;
+      response.keywords = job.result.keywords || [];
       response.captions = job.result.captions;
     }
 
@@ -378,6 +384,241 @@ router.post('/cleanup/all', async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to cleanup temp files',
+    });
+  }
+});
+
+/**
+ * POST /api/video/regenerate
+ * Regenerate video with edited script/images/audio
+ */
+router.post('/regenerate', upload.fields([
+  { name: 'audio', maxCount: 1 },
+  { name: 'images', maxCount: 10 }
+]), async (req, res) => {
+  try {
+    const { jobId, videoPath, script, hashtags, keywords, captions } = req.body;
+    const audioFile = req.files?.audio?.[0];
+    const imageFiles = req.files?.images || [];
+
+    if (!jobId || !videoPath) {
+      return res.status(400).json({
+        success: false,
+        error: 'jobId and videoPath are required',
+      });
+    }
+
+    // Parse JSON strings
+    const parsedHashtags = typeof hashtags === 'string' ? JSON.parse(hashtags) : hashtags;
+    const parsedKeywords = typeof keywords === 'string' ? JSON.parse(keywords) : keywords;
+    const parsedCaptions = typeof captions === 'string' ? JSON.parse(captions) : captions;
+
+    // Get job data
+    const job = jobService.getJob(jobId);
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        error: 'Job not found',
+      });
+    }
+
+    let finalVideoPath = videoPath;
+    let audioPath = null;
+
+    // If audio uploaded, replace voice
+    if (audioFile) {
+      audioPath = audioFile.path;
+      finalVideoPath = await editorService.replaceVoice(videoPath, audioPath);
+      // Cleanup uploaded file
+      await fs.unlink(audioFile.path).catch(() => {});
+    }
+
+    // If images uploaded, regenerate Ken Burns video
+    if (imageFiles.length > 0) {
+      const imagePaths = imageFiles.map(f => f.path);
+      const kenBurnsService = require('../services/kenBurnsService');
+      const kenBurnsVideoPath = await kenBurnsService.createKenBurnsEffect(
+        imagePaths,
+        job.duration || 60
+      );
+      
+      // Combine with audio if available
+      if (audioPath || job.audioPath) {
+        const audioToUse = audioPath || job.audioPath;
+        finalVideoPath = await editorService.combineAudioVideoWithCaptions(
+          kenBurnsVideoPath,
+          audioToUse,
+          parsedCaptions,
+          `video_${jobId}_regenerated.mp4`
+        );
+      } else {
+        finalVideoPath = kenBurnsVideoPath;
+      }
+
+      // Cleanup uploaded images
+      for (const file of imageFiles) {
+        await fs.unlink(file.path).catch(() => {});
+      }
+    }
+
+    // Update captions if script changed
+    if (script && parsedCaptions) {
+      // Add captions overlay
+      finalVideoPath = await editorService.addCaptionsOverlay(
+        finalVideoPath,
+        parsedCaptions,
+        `video_${jobId}_final.mp4`,
+        path.join(__dirname, '../../output/videos')
+      );
+    }
+
+    // Update job result
+    jobService.updateJob(jobId, {
+      status: 'completed',
+      result: {
+        url: `/api/video/download/${path.basename(finalVideoPath)}`,
+        path: finalVideoPath,
+        filename: path.basename(finalVideoPath),
+      },
+    });
+
+    res.json({
+      success: true,
+      video: {
+        url: `/api/video/download/${path.basename(finalVideoPath)}`,
+        path: finalVideoPath,
+        filename: path.basename(finalVideoPath),
+      },
+    });
+  } catch (error) {
+    console.error('Error regenerating video:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to regenerate video',
+    });
+  }
+});
+
+/**
+ * POST /api/video/generate-script
+ * Generate script only (without creating video)
+ */
+router.post('/generate-script', async (req, res) => {
+  try {
+    const { topic, duration = 60 } = req.body;
+
+    if (!topic || typeof topic !== 'string' || topic.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Topic is required',
+      });
+    }
+
+    const contentService = require('../services/contentService');
+    const scriptData = await contentService.generateScript(topic.trim(), duration || 60);
+
+    res.json({
+      success: true,
+      scriptData,
+    });
+  } catch (error) {
+    console.error('Error generating script:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to generate script',
+    });
+  }
+});
+
+/**
+ * POST /api/video/search-images
+ * Search images for selection (returns URLs without downloading)
+ */
+router.post('/search-images', async (req, res) => {
+  try {
+    const { topic, keywords = [], maxImages = 20 } = req.body;
+
+    if (!topic && (!keywords || keywords.length === 0)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Topic or keywords are required',
+      });
+    }
+
+    const images = await imageService.searchImagesForSelection(
+      keywords,
+      maxImages,
+      topic
+    );
+
+    res.json({
+      success: true,
+      images,
+      count: images.length,
+    });
+  } catch (error) {
+    console.error('Error searching images:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to search images',
+    });
+  }
+});
+
+/**
+ * POST /api/video/create-with-images
+ * Create video with selected images and script
+ */
+router.post('/create-with-images', async (req, res) => {
+  try {
+    const { topic, duration = 60, mode = 'draft', scriptData, selectedImageUrls = [] } = req.body;
+
+    if (!topic || typeof topic !== 'string' || topic.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Topic is required',
+      });
+    }
+
+    if (!scriptData || !scriptData.script) {
+      return res.status(400).json({
+        success: false,
+        error: 'Script data is required',
+      });
+    }
+
+    if (!selectedImageUrls || selectedImageUrls.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'At least one image URL is required',
+      });
+    }
+
+    // Create job with script data and selected images
+    const options = {
+      scriptData,
+      selectedImageUrls,
+    };
+    
+    const jobId = jobService.createJob(topic.trim(), duration || 60, mode, options);
+    
+    // Process job with selected images
+    jobService.processJobWithSelectedImages(jobId).catch((error) => {
+      console.error('Background job error:', error);
+    });
+
+    res.json({
+      success: true,
+      jobId,
+      status: 'processing',
+      mode,
+      message: 'Video creation started with selected images',
+    });
+  } catch (error) {
+    console.error('Error creating video with images:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to create video',
     });
   }
 });

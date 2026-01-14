@@ -434,6 +434,15 @@ async function processJob(jobId) {
       };
     }
 
+    // Store script data in result
+    result.script = scriptData.script;
+    result.hook = scriptData.hook || '';
+    result.midHook = scriptData.midHook || '';
+    result.cta = scriptData.cta || '';
+    result.hashtags = scriptData.hashtags;
+    result.keywords = scriptData.keywords || [];
+    result.captions = scriptData.captions;
+
     // Cleanup temp files
     try {
       if (audioPath) {
@@ -557,11 +566,226 @@ async function cleanupJobFiles(jobId) {
 // Run cleanup every 30 minutes
 setInterval(cleanupOldJobs, 30 * 60 * 1000);
 
+/**
+ * Process video creation job with selected images and script
+ * @param {string} jobId - Job ID
+ */
+async function processJobWithSelectedImages(jobId) {
+  const job = getJob(jobId);
+  if (!job) {
+    throw new Error('Job not found');
+  }
+
+  try {
+    updateJob(jobId, { status: 'processing', progress: 'กำลังดาวน์โหลดรูปภาพ...' });
+    addLog(jobId, `[SYSTEM] Initializing video generation with selected images for topic: "${job.topic}"`, 'info');
+
+    const voiceService = require('./voiceService');
+    const imageService = require('./imageService');
+    const kenBurnsService = require('./kenBurnsService');
+    const editorService = require('./editorService');
+
+    // Get script data and selected images from options
+    const scriptData = job.options?.scriptData;
+    const selectedImageUrls = job.options?.selectedImageUrls || [];
+
+    if (!scriptData || !scriptData.script) {
+      throw new Error('Script data is required');
+    }
+
+    if (!selectedImageUrls || selectedImageUrls.length === 0) {
+      throw new Error('Selected images are required');
+    }
+
+    addLog(jobId, `[STEP 1/5] ✓ Using provided script (${scriptData.script.length} characters)`, 'success');
+    addLog(jobId, `[STEP 1/5] Keywords: ${scriptData.keywords?.join(', ') || 'N/A'}`, 'info');
+
+    // Step 2: Generate voice
+    let audioPath = null;
+    const hasVoiceService = process.env.ELEVENLABS_API_KEY || process.env.OPENAI_API_KEY || process.env.GOOGLE_CLOUD_TTS_KEY;
+    
+    if (hasVoiceService) {
+      updateJob(jobId, { progress: 'กำลังสร้างเสียงพูด...' });
+      let serviceName = 'Voice Service';
+      if (process.env.ELEVENLABS_API_KEY) {
+        serviceName = 'ElevenLabs';
+      } else if (process.env.OPENAI_API_KEY) {
+        serviceName = 'OpenAI TTS';
+      } else if (process.env.GOOGLE_CLOUD_TTS_KEY) {
+        serviceName = 'Google Cloud TTS';
+      }
+      addLog(jobId, `[STEP 2/5] Connecting to ${serviceName} API...`, 'info');
+      try {
+        audioPath = await voiceService.generateVoice(scriptData.script);
+        addLog(jobId, `[STEP 2/5] ✓ Voice generated successfully`, 'success');
+      } catch (voiceError) {
+        addLog(jobId, `[STEP 2/5] ⚠ Voice generation skipped: ${voiceError.message}`, 'warning');
+        audioPath = null;
+      }
+    } else {
+      addLog(jobId, '[STEP 2/5] ⚠ No voice service API key found. Skipping voice generation...', 'warning');
+    }
+
+    // Step 3: Download selected images
+    updateJob(jobId, { progress: 'กำลังดาวน์โหลดรูปภาพที่เลือก...' });
+    addLog(jobId, `[STEP 3/5] Downloading ${selectedImageUrls.length} selected images...`, 'info');
+    
+    const imagePaths = [];
+    for (const url of selectedImageUrls) {
+      try {
+        const path = await imageService.downloadImage(url);
+        imagePaths.push(path);
+      } catch (error) {
+        addLog(jobId, `[STEP 3/5] ⚠ Failed to download image: ${url}`, 'warning');
+      }
+    }
+
+    if (imagePaths.length === 0) {
+      throw new Error('Failed to download any images');
+    }
+
+    addLog(jobId, `[STEP 3/5] ✓ Downloaded ${imagePaths.length} images`, 'success');
+
+    // Step 4: Create Ken Burns video
+    updateJob(jobId, { progress: 'กำลังสร้างเอฟเฟกต์ Ken Burns...' });
+    addLog(jobId, '[STEP 4/5] Creating Ken Burns effects...', 'info');
+    
+    let videoPath;
+    try {
+      videoPath = await kenBurnsService.createVideoFromImages(imagePaths, job.duration);
+      addLog(jobId, `[STEP 4/5] ✓ Video created: ${path.basename(videoPath)}`, 'success');
+    } catch (kenBurnsError) {
+      addLog(jobId, `[STEP 4/5] ⚠ Video creation failed: ${kenBurnsError.message}`, 'warning');
+      throw kenBurnsError;
+    }
+
+    // Step 5: Create final video
+    updateJob(jobId, { progress: 'กำลังสร้างวิดีโอสุดท้าย...' });
+    addLog(jobId, '[STEP 5/5] Combining audio, video, and captions...', 'info');
+
+    const result = {
+      script: scriptData.script,
+      hashtags: scriptData.hashtags || [],
+      keywords: scriptData.keywords || [],
+      captions: scriptData.captions || [],
+      warnings: [],
+    };
+
+    if (job.mode === 'draft') {
+      // Draft mode - create draft videos
+      const baseFilename = `video_${jobId}`;
+      const draftVideos = await editorService.createDraftVideos(
+        videoPath,
+        audioPath,
+        scriptData.captions || [],
+        baseFilename
+      );
+
+      if (draftVideos.draft) {
+        result.draft = {
+          url: `/api/video/download/draft/${path.basename(draftVideos.draft)}`,
+          path: draftVideos.draft,
+          filename: path.basename(draftVideos.draft),
+        };
+      }
+      result.noVoice = {
+        url: `/api/video/download/no_voice/${path.basename(draftVideos.noVoice)}`,
+        path: draftVideos.noVoice,
+        filename: path.basename(draftVideos.noVoice),
+      };
+      result.scriptFile = {
+        url: `/api/video/download/scripts/${path.basename(draftVideos.script)}`,
+        path: draftVideos.script,
+        filename: path.basename(draftVideos.script),
+      };
+    } else {
+      // Final mode
+      const filename = `video_${jobId}.mp4`;
+      let finalVideoPath;
+      try {
+        if (audioPath) {
+          finalVideoPath = await editorService.createFinalVideo(
+            videoPath,
+            audioPath,
+            scriptData.captions || [],
+            filename
+          );
+        } else {
+          const OUTPUT_DIR = path.join(__dirname, '../../output/videos');
+          await fs.mkdir(OUTPUT_DIR, { recursive: true });
+          finalVideoPath = await editorService.addCaptionsOverlay(
+            videoPath,
+            scriptData.captions || [],
+            filename,
+            OUTPUT_DIR
+          );
+        }
+      } catch (finalError) {
+        addLog(jobId, `[STEP 5/5] ⚠ Final video creation error: ${finalError.message}`, 'warning');
+        const OUTPUT_DIR = path.join(__dirname, '../../output/videos');
+        await fs.mkdir(OUTPUT_DIR, { recursive: true });
+        finalVideoPath = await editorService.addCaptionsOverlay(
+          videoPath,
+          scriptData.captions || [],
+          filename,
+          OUTPUT_DIR
+        );
+        result.warnings.push(`Final video created without audio: ${finalError.message}`);
+      }
+
+      result.video = {
+        url: `/api/video/download/${path.basename(finalVideoPath)}`,
+        path: finalVideoPath,
+        filename: filename,
+      };
+    }
+
+    // Store script data in result
+    result.script = scriptData.script;
+    result.hook = scriptData.hook || '';
+    result.midHook = scriptData.midHook || '';
+    result.cta = scriptData.cta || '';
+    result.hashtags = scriptData.hashtags || [];
+    result.keywords = scriptData.keywords || [];
+    result.captions = scriptData.captions || [];
+
+    // Cleanup temp files
+    try {
+      if (audioPath) {
+        await fs.unlink(audioPath).catch(() => {});
+      }
+      imagePaths.forEach(async (p) => {
+        await fs.unlink(p).catch(() => {});
+      });
+      await fs.unlink(videoPath).catch(() => {});
+    } catch (cleanupError) {
+      console.warn('Cleanup error:', cleanupError);
+    }
+    
+    addLog(jobId, '[SYSTEM] ✓ Video generation completed successfully!', 'success');
+    updateJob(jobId, {
+      status: 'completed',
+      progress: 'สร้างวิดีโอสำเร็จ!',
+      result,
+    });
+  } catch (error) {
+    console.error('Job processing error:', error);
+    const errorMessage = error.message || 'Failed to create video';
+    addLog(jobId, `[ERROR] ${errorMessage}`, 'error');
+    
+    updateJob(jobId, {
+      status: 'error',
+      error: errorMessage,
+    });
+  }
+}
+
 module.exports = {
   createJob,
   getJob,
   updateJob,
   processJob,
+  processJobWithSelectedImages,
   addLog,
   cleanupJobFiles,
 };

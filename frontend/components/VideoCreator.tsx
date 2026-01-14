@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
+import EditMode from './EditMode'
+import ImageSelector from './ImageSelector'
 
 interface VideoResult {
   url: string
@@ -9,8 +11,12 @@ interface VideoResult {
 }
 
 interface ScriptData {
+  hook?: string
   script: string
+  midHook?: string
+  cta?: string
   hashtags: string[]
+  keywords?: string[]
   captions: Array<{
     text: string
     startTime: number
@@ -31,6 +37,10 @@ export default function VideoCreator() {
   const [jobStatus, setJobStatus] = useState<JobStatus>('idle')
   const [progress, setProgress] = useState('')
   const [logs, setLogs] = useState<Array<{timestamp: string, message: string, type: string}>>([])
+  const [showEditMode, setShowEditMode] = useState(false)
+  const [showImageSelector, setShowImageSelector] = useState(false)
+  const [currentVideoPath, setCurrentVideoPath] = useState<string | null>(null)
+  const [pendingScriptData, setPendingScriptData] = useState<ScriptData | null>(null)
   const logsEndRef = useRef<HTMLDivElement>(null)
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003'
@@ -54,19 +64,24 @@ export default function VideoCreator() {
         if (status === 'completed' && video) {
           setJobStatus('completed')
           setResult(video)
+          setCurrentVideoPath(video.path || null)
           setScriptData({
             script: script || '',
             hashtags: hashtags || [],
+            keywords: response.data.keywords || [],
             captions: captions || [],
           })
           setLoading(false)
         } else if (status === 'completed' && (response.data.draft || response.data.noVoice)) {
           // Draft mode
           setJobStatus('completed')
-          setResult(response.data.draft || response.data.noVoice)
+          const draftVideo = response.data.draft || response.data.noVoice
+          setResult(draftVideo)
+          setCurrentVideoPath(draftVideo.path || null)
           setScriptData({
             script: script || '',
             hashtags: hashtags || [],
+            keywords: response.data.keywords || [],
             captions: captions || [],
           })
           setLoading(false)
@@ -99,30 +114,57 @@ export default function VideoCreator() {
     setResult(null)
     setScriptData(null)
     setJobStatus('creating')
-    setProgress('')
+    setProgress('กำลังสร้างสคริปต์...')
     setLogs([])
 
     try {
-      const response = await axios.post(`${apiUrl}/api/video/create`, {
+      // Step 1: Generate script first
+      const scriptResponse = await axios.post(`${apiUrl}/api/video/generate-script`, {
         topic,
         duration,
       })
 
-      // Check if response is async (has jobId) or sync (has video)
+      if (scriptResponse.data.success && scriptResponse.data.scriptData) {
+        const generatedScript = scriptResponse.data.scriptData
+        setPendingScriptData(generatedScript)
+        setScriptData(generatedScript)
+        setLoading(false)
+        setJobStatus('idle')
+        
+        // Show image selector
+        setShowImageSelector(true)
+      } else {
+        throw new Error('Failed to generate script')
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.error || err.message || 'เกิดข้อผิดพลาด')
+      setJobStatus('error')
+      setLoading(false)
+      console.error('Error:', err)
+    }
+  }
+
+  const handleImageSelect = async (selectedImageUrls: string[]) => {
+    if (!pendingScriptData) return
+
+    setShowImageSelector(false)
+    setLoading(true)
+    setJobStatus('processing')
+    setProgress('กำลังสร้างวิดีโอ...')
+    setLogs([])
+
+    try {
+      const response = await axios.post(`${apiUrl}/api/video/create-with-images`, {
+        topic,
+        duration,
+        scriptData: pendingScriptData,
+        selectedImageUrls,
+      })
+
       if (response.data.jobId) {
         setJobId(response.data.jobId)
         setJobStatus('processing')
-        setProgress('กำลังสร้างสคริปต์...')
-      } else if (response.data.video) {
-        // Synchronous response (for quick jobs)
-        setResult(response.data.video)
-        setScriptData({
-          script: response.data.script,
-          hashtags: response.data.hashtags,
-          captions: response.data.captions,
-        })
-        setJobStatus('completed')
-        setLoading(false)
+        setProgress('กำลังสร้างวิดีโอ...')
       }
     } catch (err: any) {
       setError(err.response?.data?.error || err.message || 'เกิดข้อผิดพลาด')
@@ -137,6 +179,16 @@ export default function VideoCreator() {
       const downloadUrl = `${apiUrl}${result.url}`
       window.open(downloadUrl, '_blank')
     }
+  }
+
+  const handleRegenerate = (newVideoUrl: string) => {
+    if (result) {
+      setResult({
+        ...result,
+        url: newVideoUrl,
+      })
+    }
+    setShowEditMode(false)
   }
 
   return (
@@ -299,8 +351,11 @@ export default function VideoCreator() {
               </button>
               <button
                 onClick={() => {
-                  // TODO: Open edit mode
-                  alert('Edit mode coming soon!')
+                  if (currentVideoPath && scriptData && jobId) {
+                    setShowEditMode(true)
+                  } else {
+                    alert('ไม่พบข้อมูลวิดีโอหรือสคริปต์')
+                  }
                 }}
                 className="bg-[#00ffff]/20 border-2 border-[#00ffff]/50 text-[#00ffff] px-4 py-3 rounded-lg font-mono uppercase tracking-wider hover:bg-[#00ffff]/30 hover:border-[#00ffff] transition-all"
               >
@@ -314,12 +369,39 @@ export default function VideoCreator() {
 
           {scriptData && (
             <div className="space-y-5 bg-[#0a0a0f]/80 p-5 rounded-lg border-2 border-[#00ffff]/30 shadow-[0_0_20px_rgba(0,255,255,0.2)]">
+              {scriptData.hook && (
+                <div>
+                  <h3 className="font-bold text-[#ffff00] mb-2 text-sm font-mono uppercase tracking-wider">[HOOK] ⚡</h3>
+                  <div className="bg-[#ffff00]/10 border border-[#ffff00]/50 rounded p-3 font-mono text-sm text-[#ffff00] leading-relaxed">
+                    {scriptData.hook}
+                  </div>
+                </div>
+              )}
+              
               <div>
                 <h3 className="font-bold text-[#00ffff] mb-3 text-sm font-mono uppercase tracking-wider">[SCRIPT_DATA]</h3>
                 <div className="bg-[#050508] border border-[#00ff41]/30 rounded p-4 font-mono text-sm text-[#00ff41] leading-relaxed whitespace-pre-wrap">
                   {scriptData.script}
                 </div>
               </div>
+
+              {scriptData.midHook && (
+                <div>
+                  <h3 className="font-bold text-[#ff8800] mb-2 text-sm font-mono uppercase tracking-wider">[MID-HOOK] 🔥</h3>
+                  <div className="bg-[#ff8800]/10 border border-[#ff8800]/50 rounded p-3 font-mono text-sm text-[#ff8800] leading-relaxed">
+                    {scriptData.midHook}
+                  </div>
+                </div>
+              )}
+
+              {scriptData.cta && (
+                <div>
+                  <h3 className="font-bold text-[#00ff88] mb-2 text-sm font-mono uppercase tracking-wider">[CALL-TO-ACTION] 📢</h3>
+                  <div className="bg-[#00ff88]/10 border border-[#00ff88]/50 rounded p-3 font-mono text-sm text-[#00ff88] leading-relaxed">
+                    {scriptData.cta}
+                  </div>
+                </div>
+              )}
 
               {scriptData.hashtags.length > 0 && (
                 <div>
@@ -336,6 +418,34 @@ export default function VideoCreator() {
             </div>
           )}
         </div>
+      )}
+
+      {/* Image Selector Modal */}
+      {showImageSelector && scriptData && (
+        <ImageSelector
+          topic={topic}
+          keywords={scriptData.keywords || []}
+          onSelect={handleImageSelect}
+          onCancel={() => {
+            setShowImageSelector(false)
+            setPendingScriptData(null)
+            setScriptData(null)
+          }}
+          minImages={3}
+          maxImages={10}
+        />
+      )}
+
+      {/* Edit Mode Modal */}
+      {showEditMode && result && scriptData && jobId && currentVideoPath && (
+        <EditMode
+          videoUrl={`${apiUrl}${result.url}`}
+          videoPath={currentVideoPath}
+          scriptData={scriptData}
+          jobId={jobId}
+          onClose={() => setShowEditMode(false)}
+          onRegenerate={handleRegenerate}
+        />
       )}
     </div>
   )

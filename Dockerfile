@@ -1,9 +1,13 @@
 # Dockerfile for Railway deployment
 FROM node:18-alpine
 
-# Install FFmpeg and required dependencies
+# Install FFmpeg and required dependencies (including fonts for drawtext filter)
 RUN apk add --no-cache \
     ffmpeg \
+    ffmpeg-dev \
+    freetype \
+    fontconfig \
+    ttf-dejavu \
     python3 \
     make \
     g++

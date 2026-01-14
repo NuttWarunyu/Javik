@@ -59,7 +59,24 @@ async function generateWithElevenLabs(text, voiceId = '21m00Tcm4TlvDq8ikWAM') {
     // Parse error details
     let errorMessage = error.message;
     if (error.response?.status === 401) {
-      errorMessage = 'ElevenLabs API Key is invalid or expired. Please check your ELEVENLABS_API_KEY in Railway environment variables.';
+      // 401 can mean invalid key OR missing permissions
+      if (error.response?.data) {
+        try {
+          const errorData = Buffer.isBuffer(error.response.data) 
+            ? JSON.parse(error.response.data.toString())
+            : error.response.data;
+          
+          if (errorData.detail?.status === 'missing_permissions') {
+            errorMessage = 'ElevenLabs API Key missing permissions for text-to-speech. Your API key can read voices but cannot generate speech. Please create a new API key with "text_to_speech" or "text_to_speech_high_quality" permission enabled.';
+          } else {
+            errorMessage = 'ElevenLabs API Key is invalid or missing text-to-speech permissions. Please check your ELEVENLABS_API_KEY in Railway and ensure it has text-to-speech permissions enabled.';
+          }
+        } catch (e) {
+          errorMessage = 'ElevenLabs API Key is invalid or missing text-to-speech permissions. Please create a new API key with text-to-speech permission enabled.';
+        }
+      } else {
+        errorMessage = 'ElevenLabs API Key is invalid or missing text-to-speech permissions. Please check your ELEVENLABS_API_KEY in Railway environment variables.';
+      }
     } else if (error.response?.status === 429) {
       errorMessage = 'ElevenLabs API rate limit exceeded. Please try again later.';
     } else if (error.response?.data) {
@@ -70,7 +87,7 @@ async function generateWithElevenLabs(text, voiceId = '21m00Tcm4TlvDq8ikWAM') {
         if (errorData.detail?.status) {
           const status = errorData.detail.status;
           if (status === 'missing_permissions') {
-            errorMessage = 'ElevenLabs API Key missing permissions. Please create a new API key with proper permissions.';
+            errorMessage = 'ElevenLabs API Key missing permissions for text-to-speech. Please create a new API key with "text_to_speech" permission enabled.';
           } else if (status === 'detected_unusual_activity') {
             errorMessage = 'ElevenLabs detected unusual activity. Please wait a few minutes and try again, or use OpenAI TTS instead.';
           } else {
