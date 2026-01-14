@@ -29,26 +29,28 @@ async function generateScript(topic, duration = 60) {
   "keywords": ["keyword1", "keyword2"]
 }
 
-คำแนะนำ:
-- เขียนให้เข้าใจง่าย สั้น กระชับ
-- ใช้ภาษาที่เป็นธรรมชาติ พูดง่าย
+คำแนะนำสำคัญ:
+- เริ่มต้นด้วย HOOK ที่น่าสนใจ (คำถาม, ข้อเท็จจริงที่น่าตกใจ, หรือประโยคที่ดึงดูดความสนใจ)
+- ใช้ภาษาที่เป็นธรรมชาติ พูดง่าย ไม่หุ่นยนต์
+- เพิ่มอารมณ์และความรู้สึก (ตื่นเต้น, ประหลาดใจ, สนุก)
+- ใช้คำถามเพื่อดึงดูดความสนใจ
 - แคปชั่นควรสั้น 3-5 วินาทีต่อข้อความ
 - hashtags 5-10 อัน
-- keywords สำหรับหารูปภาพ 3-5 คำ`;
+- keywords สำหรับหารูปภาพ: ต้องเป็นคำที่ตรงกับหัวข้อ "${topic}" โดยตรง (เช่น ถ้าหัวข้อคือ "Red Handfish" keywords ต้องเป็น "red handfish", "handfish", "fish" ไม่ใช่คำทั่วไป)`;
 
     const response = await openai.chat.completions.create({
       model: 'gpt-4-turbo-preview', // หรือ 'gpt-4o' ที่รองรับ json_object
       messages: [
         {
           role: 'system',
-          content: 'คุณเป็นผู้เชี่ยวชาญในการสร้างสคริปต์วิดีโอสั้นสำหรับ TikTok และ YouTube Shorts ตอบเป็น JSON เท่านั้น ต้องตอบเป็น JSON format เท่านั้น',
+          content: 'คุณเป็นผู้เชี่ยวชาญในการสร้างสคริปต์วิดีโอสั้นสำหรับ TikTok และ YouTube Shorts ที่น่าสนใจและดึงดูดความสนใจ ใช้ภาษาธรรมชาติ มี hook ที่น่าสนใจ และ keywords ต้องตรงกับหัวข้อโดยตรง ตอบเป็น JSON เท่านั้น',
         },
         {
           role: 'user',
           content: prompt,
         },
       ],
-      temperature: 0.7,
+      temperature: 0.9, // เพิ่ม temperature เพื่อให้มีความสร้างสรรค์มากขึ้น
       response_format: { type: 'json_object' },
     });
 

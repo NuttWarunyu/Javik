@@ -267,21 +267,49 @@ export default function VideoCreator() {
 
       {result && (
         <div className="space-y-5">
+          {/* Video Preview */}
           <div className="bg-[#001a00]/80 border-2 border-[#00ff41]/50 text-[#00ff41] px-5 py-5 rounded-lg shadow-[0_0_30px_rgba(0,255,65,0.4)] font-mono">
             <p className="font-bold text-lg mb-4 flex items-center gap-3 uppercase tracking-wider">
               <span className="text-[#00ff41] animate-pulse">[SUCCESS]</span>
-              <span>VIDEO_GENERATED</span>
+              <span>VIDEO_PREVIEW</span>
             </p>
-            <button
-              onClick={downloadVideo}
-              className="w-full bg-gradient-to-r from-[#00ff41] to-[#00ffff] text-[#050508] px-6 py-4 rounded-lg font-bold text-lg font-mono uppercase tracking-wider hover:from-[#00ff88] hover:to-[#00ffff] transition-all shadow-[0_0_20px_rgba(0,255,65,0.5)] hover:shadow-[0_0_30px_rgba(0,255,65,0.8)] active:scale-[0.98] transform hover:scale-[1.02] relative overflow-hidden"
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full hover:translate-x-full transition-transform duration-1000"></div>
-              <span className="flex items-center justify-center gap-3 relative z-10">
-                <span className="text-xl">⬇</span>
-                <span>[DOWNLOAD] VIDEO_FILE</span>
-              </span>
-            </button>
+            
+            {/* Video Player */}
+            <div className="mb-4 bg-[#050508] rounded-lg overflow-hidden border-2 border-[#00ffff]/30">
+              <video
+                src={`${apiUrl}${result.url}`}
+                controls
+                className="w-full h-auto"
+                style={{ maxHeight: '600px' }}
+              >
+                Your browser does not support the video tag.
+              </video>
+            </div>
+            
+            {/* Action Buttons */}
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={downloadVideo}
+                className="bg-[#00ff41]/20 border-2 border-[#00ff41]/50 text-[#00ff41] px-4 py-3 rounded-lg font-mono uppercase tracking-wider hover:bg-[#00ff41]/30 hover:border-[#00ff41] transition-all"
+              >
+                <span className="flex items-center justify-center gap-2">
+                  <span>⬇</span>
+                  <span>DOWNLOAD</span>
+                </span>
+              </button>
+              <button
+                onClick={() => {
+                  // TODO: Open edit mode
+                  alert('Edit mode coming soon!')
+                }}
+                className="bg-[#00ffff]/20 border-2 border-[#00ffff]/50 text-[#00ffff] px-4 py-3 rounded-lg font-mono uppercase tracking-wider hover:bg-[#00ffff]/30 hover:border-[#00ffff] transition-all"
+              >
+                <span className="flex items-center justify-center gap-2">
+                  <span>✏️</span>
+                  <span>EDIT</span>
+                </span>
+              </button>
+            </div>
           </div>
 
           {scriptData && (

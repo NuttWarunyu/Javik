@@ -105,11 +105,31 @@ async function downloadImage(url) {
  * @param {number} imagesPerKeyword - Images per keyword (default: 2)
  * @returns {Promise<Array<string>>} Array of downloaded image paths
  */
-async function searchAndDownloadImages(keywords, imagesPerKeyword = 2) {
+async function searchAndDownloadImages(keywords, imagesPerKeyword = 2, topic = '') {
   const imageUrls = [];
   
+  // Prioritize topic-specific keywords first
+  // If topic is provided, search for it first to get most relevant images
+  if (topic && topic.trim()) {
+    try {
+      if (process.env.UNSPLASH_ACCESS_KEY) {
+        const urls = await searchUnsplash(topic.trim(), imagesPerKeyword);
+        imageUrls.push(...urls);
+      } else if (process.env.PEXELS_API_KEY) {
+        const urls = await searchPexels(topic.trim(), imagesPerKeyword);
+        imageUrls.push(...urls);
+      }
+    } catch (error) {
+      console.error(`Error searching for topic "${topic}":`, error.message);
+    }
+  }
+  
+  // Then search for keywords (these should be more specific)
   // Try Unsplash first, fallback to Pexels
   for (const keyword of keywords) {
+    // Skip if we already have enough images
+    if (imageUrls.length >= 10) break;
+    
     try {
       if (process.env.UNSPLASH_ACCESS_KEY) {
         const urls = await searchUnsplash(keyword, imagesPerKeyword);

@@ -158,7 +158,8 @@ async function processJob(jobId) {
     try {
       imagePaths = await imageService.searchAndDownloadImages(
         scriptData.keywords,
-        2
+        2,
+        job.topic  // Pass topic to prioritize topic-specific images
       );
       addLog(jobId, `[STEP 3/5] ✓ Downloaded ${imagePaths.length} images`, 'success');
     } catch (imageError) {
