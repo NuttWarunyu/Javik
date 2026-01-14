@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs').promises;
+const fsSync = require('fs');
 require('dotenv').config();
 
 const app = express();
@@ -72,9 +73,18 @@ app.get('/api/health', (req, res) => {
 const videoRoutes = require('./routes/videoRoutes');
 app.use('/api/video', videoRoutes);
 
-// API check routes
-const apiCheckRoutes = require('./routes/apiCheckRoutes');
-app.use('/api/check', apiCheckRoutes);
+// API check routes (optional - only if file exists)
+const apiCheckRoutesPath = path.join(__dirname, './routes/apiCheckRoutes.js');
+if (fsSync.existsSync(apiCheckRoutesPath)) {
+  try {
+    const apiCheckRoutes = require('./routes/apiCheckRoutes');
+    app.use('/api/check', apiCheckRoutes);
+  } catch (error) {
+    console.warn('⚠ Failed to load API check routes:', error.message);
+  }
+} else {
+  console.log('ℹ API check routes not found, skipping...');
+}
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -95,19 +105,32 @@ app.use((req, res) => {
 
 // Initialize server
 async function startServer() {
-  await ensureDirectories();
-  
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🎬 TikTok Automation API running on port ${PORT}`);
-    console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
-    console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  });
+  try {
+    await ensureDirectories();
+    
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`🎬 TikTok Automation API running on port ${PORT}`);
+      console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
+      console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+    });
+  } catch (error) {
+    console.error('Failed to start server:', error);
+    process.exit(1);
+  }
 }
 
-startServer().catch((error) => {
-  console.error('Failed to start server:', error);
+// Handle uncaught errors
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
   process.exit(1);
 });
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  process.exit(1);
+});
+
+startServer();
 
 module.exports = app;
 
