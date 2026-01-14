@@ -13,13 +13,32 @@ const CAPTIONS_DIR = path.join(__dirname, '../../output/captions');
 // Ensure output directory exists
 async function ensureOutputDir() {
   try {
+    // Create all directories with recursive option
     await fs.mkdir(OUTPUT_DIR, { recursive: true });
     await fs.mkdir(DRAFT_DIR, { recursive: true });
     await fs.mkdir(NO_VOICE_DIR, { recursive: true });
     await fs.mkdir(SCRIPTS_DIR, { recursive: true });
     await fs.mkdir(CAPTIONS_DIR, { recursive: true });
+    
+    // Verify directories exist by checking access
+    await fs.access(OUTPUT_DIR).catch(() => {
+      throw new Error(`Failed to create OUTPUT_DIR: ${OUTPUT_DIR}`);
+    });
+    await fs.access(DRAFT_DIR).catch(() => {
+      throw new Error(`Failed to create DRAFT_DIR: ${DRAFT_DIR}`);
+    });
+    await fs.access(NO_VOICE_DIR).catch(() => {
+      throw new Error(`Failed to create NO_VOICE_DIR: ${NO_VOICE_DIR}`);
+    });
+    await fs.access(SCRIPTS_DIR).catch(() => {
+      throw new Error(`Failed to create SCRIPTS_DIR: ${SCRIPTS_DIR}`);
+    });
   } catch (error) {
-    // Directory already exists
+    console.error('Error ensuring output directories:', error);
+    // Re-throw if it's not just "already exists"
+    if (error.code !== 'EEXIST') {
+      throw error;
+    }
   }
 }
 
@@ -117,13 +136,26 @@ async function combineAudioVideoWithCaptions(videoPath, audioPath, captions, fil
  * @param {string} videoPath - Path to video file
  * @param {Array<Object>} captions - Array of caption objects
  * @param {string} filename - Output filename
+ * @param {string} outputDir - Optional output directory (default: OUTPUT_DIR)
  * @returns {Promise<string>} Path to final video
  */
-async function addCaptionsOverlay(videoPath, captions, filename = null) {
+async function addCaptionsOverlay(videoPath, captions, filename = null, outputDir = null) {
   await ensureOutputDir();
   
   const outputFilename = filename || `video_captions_${Date.now()}.mp4`;
-  const outputPath = path.join(OUTPUT_DIR, outputFilename);
+  const targetDir = outputDir || OUTPUT_DIR;
+  const outputPath = path.join(targetDir, outputFilename);
+  
+  // Ensure parent directory exists
+  const dirPath = path.dirname(outputPath);
+  await fs.mkdir(dirPath, { recursive: true });
+  
+  // Verify directory was created
+  try {
+    await fs.access(dirPath);
+  } catch (err) {
+    throw new Error(`Failed to create output directory: ${dirPath} - ${err.message}`);
+  }
 
   // Create filter complex for captions
   const filters = [];
@@ -133,9 +165,15 @@ async function addCaptionsOverlay(videoPath, captions, filename = null) {
     const startTime = caption.startTime;
     const endTime = startTime + caption.duration;
     
+    // Use system font (works on both macOS and Linux)
+    // On Alpine Linux, use DejaVu Sans which is usually available
+    const fontPath = process.platform === 'darwin' 
+      ? '/System/Library/Fonts/Helvetica.ttc'
+      : '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
+    
     filters.push(
       `drawtext=text='${caption.text.replace(/'/g, "\\'")}':` +
-      `fontfile=/System/Library/Fonts/Helvetica.ttc:` +
+      `fontfile=${fontPath}:` +
       `fontsize=60:` +
       `fontcolor=white:` +
       `x=(w-text_w)/2:` +
@@ -144,7 +182,18 @@ async function addCaptionsOverlay(videoPath, captions, filename = null) {
     );
   });
 
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
+    // Double-check directory exists before FFmpeg runs
+    try {
+      const outputDir = path.dirname(outputPath);
+      await fs.mkdir(outputDir, { recursive: true });
+      await fs.access(outputDir);
+    } catch (dirError) {
+      console.error('Failed to ensure output directory:', dirError);
+      reject(new Error(`Failed to create output directory: ${dirError.message}`));
+      return;
+    }
+    
     ffmpeg(videoPath)
       .videoFilters(filters)
       .outputOptions([
@@ -159,6 +208,8 @@ async function addCaptionsOverlay(videoPath, captions, filename = null) {
       })
       .on('error', (err) => {
         console.error('FFmpeg caption error:', err);
+        console.error('Output path:', outputPath);
+        console.error('Output directory exists:', require('fs').existsSync(path.dirname(outputPath)));
         reject(new Error(`Failed to add captions: ${err.message}`));
       })
       .run();

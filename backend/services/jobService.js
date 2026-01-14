@@ -194,42 +194,57 @@ async function processJob(jobId) {
     let videoPath;
     updateJob(jobId, { progress: 'กำลังสร้างเอฟเฟกต์ Ken Burns...' });
     addLog(jobId, '[STEP 4/5] Initializing FFmpeg...', 'info');
-    addLog(jobId, '[STEP 4/5] Creating Ken Burns effects...', 'info');
+    
+    // Check if we have valid images
+    const hasValidImages = imagePaths.length > 0;
+    if (!hasValidImages) {
+      addLog(jobId, '[STEP 4/5] No images available. Creating solid color background video...', 'info');
+    } else {
+      addLog(jobId, `[STEP 4/5] Creating Ken Burns effects from ${imagePaths.length} images...`, 'info');
+    }
     
     try {
-      if (imagePaths.length === 0) {
+      if (!hasValidImages) {
         // Create solid color background video if no images
-        addLog(jobId, '[STEP 4/5] Creating solid color background video (no images available)...', 'info');
         const solidColorPath = await kenBurnsService.createSolidColorVideo(job.duration);
         videoPath = solidColorPath;
         addLog(jobId, `[STEP 4/5] ✓ Solid color video created: ${path.basename(videoPath)}`, 'success');
       } else {
+        // Verify images exist before processing
+        const fs = require('fs').promises;
+        const validPaths = [];
+        for (const imgPath of imagePaths) {
+          try {
+            await fs.access(imgPath);
+            validPaths.push(imgPath);
+          } catch (err) {
+            addLog(jobId, `[STEP 4/5] ⚠ Image not found: ${path.basename(imgPath)}`, 'warning');
+          }
+        }
+        
+        if (validPaths.length === 0) {
+          throw new Error('No valid images found. All image files are missing or inaccessible.');
+        }
+        
         videoPath = await kenBurnsService.createVideoFromImages(
-          imagePaths,
+          validPaths,
           job.duration
         );
         addLog(jobId, `[STEP 4/5] ✓ Video created: ${path.basename(videoPath)}`, 'success');
       }
     } catch (kenBurnsError) {
-      addLog(jobId, `[STEP 4/5] ⚠ Ken Burns effect failed: ${kenBurnsError.message}`, 'warning');
-      addLog(jobId, '[STEP 4/5] Attempting fallback: Creating simple video...', 'info');
+      addLog(jobId, `[STEP 4/5] ⚠ Video creation failed: ${kenBurnsError.message}`, 'warning');
+      addLog(jobId, '[STEP 4/5] Attempting fallback: Creating solid color video...', 'info');
       
       try {
-        // Fallback: Create simple video from first image or solid color
-        if (imagePaths.length > 0) {
-          videoPath = await kenBurnsService.createVideoFromImages(
-            [imagePaths[0]], // Use only first image
-            job.duration
-          );
-          addLog(jobId, `[STEP 4/5] ✓ Fallback video created: ${path.basename(videoPath)}`, 'success');
-        } else {
-          const solidColorPath = await kenBurnsService.createSolidColorVideo(job.duration);
-          videoPath = solidColorPath;
-          addLog(jobId, `[STEP 4/5] ✓ Solid color video created: ${path.basename(videoPath)}`, 'success');
-        }
+        // Fallback: Always use solid color video
+        const solidColorPath = await kenBurnsService.createSolidColorVideo(job.duration);
+        videoPath = solidColorPath;
+        addLog(jobId, `[STEP 4/5] ✓ Fallback: Solid color video created: ${path.basename(videoPath)}`, 'success');
+        result.warnings.push(`Video created with solid color background due to image processing error: ${kenBurnsError.message}`);
       } catch (fallbackError) {
-        addLog(jobId, `[STEP 4/5] ✗ Video creation failed: ${fallbackError.message}`, 'error');
-        throw new Error(`Failed to create video: ${fallbackError.message}. Please check FFmpeg installation and image availability.`);
+        addLog(jobId, `[STEP 4/5] ✗ Fallback also failed: ${fallbackError.message}`, 'error');
+        throw new Error(`Failed to create video: ${fallbackError.message}. Please check FFmpeg installation.`);
       }
     }
 
@@ -269,15 +284,17 @@ async function processJob(jobId) {
           const noVoiceFilename = `${baseFilename}_no_voice.mp4`;
           const noVoicePath = path.join(NO_VOICE_DIR, noVoiceFilename);
           
-          // Create no-voice video with captions (will be created in OUTPUT_DIR first)
+          // Create no-voice video with captions directly in no_voice directory
           const createdVideoPath = await editorService.addCaptionsOverlay(
             videoPath,
             scriptData.captions,
-            noVoiceFilename
+            noVoiceFilename,
+            NO_VOICE_DIR  // Specify output directory
           );
           
-          // Move to no_voice directory
+          // Verify file was created in correct location
           if (createdVideoPath !== noVoicePath) {
+            // If created elsewhere, move it
             await fs.rename(createdVideoPath, noVoicePath).catch(() => {
               return fs.copyFile(createdVideoPath, noVoicePath);
             });
@@ -319,7 +336,8 @@ async function processJob(jobId) {
         const createdVideoPath = await editorService.addCaptionsOverlay(
           videoPath,
           scriptData.captions,
-          noVoiceFilename
+          noVoiceFilename,
+          NO_VOICE_DIR  // Specify output directory
         );
         
         if (createdVideoPath !== noVoicePath) {
@@ -378,10 +396,13 @@ async function processJob(jobId) {
           );
         } else {
           // Create no-voice video with captions
+          const OUTPUT_DIR = path.join(__dirname, '../../output/videos');
+          await fs.mkdir(OUTPUT_DIR, { recursive: true });
           finalVideoPath = await editorService.addCaptionsOverlay(
             videoPath,
             scriptData.captions,
-            filename
+            filename,
+            OUTPUT_DIR  // Use videos directory for final mode
           );
         }
       } catch (finalError) {
@@ -390,10 +411,13 @@ async function processJob(jobId) {
         
         try {
           // Fallback: Create video with captions only (no audio)
+          const OUTPUT_DIR = path.join(__dirname, '../../output/videos');
+          await fs.mkdir(OUTPUT_DIR, { recursive: true });
           finalVideoPath = await editorService.addCaptionsOverlay(
             videoPath,
             scriptData.captions,
-            filename
+            filename,
+            OUTPUT_DIR  // Use videos directory for final mode
           );
           result.warnings.push(`Final video created without audio: ${finalError.message}`);
         } catch (fallbackError) {
