@@ -14,14 +14,20 @@ async function ensureDirectories() {
     path.join(__dirname, '../output/videos'),
     path.join(__dirname, '../output/captions'),
     path.join(__dirname, '../output/temp'),
+    path.join(__dirname, '../output/draft'),
+    path.join(__dirname, '../output/no_voice'),
+    path.join(__dirname, '../output/scripts'),
   ];
 
   for (const dir of dirs) {
     try {
       await fs.mkdir(dir, { recursive: true });
+      // Verify directory was created
+      await fs.access(dir);
+      console.log(`✓ Directory ready: ${dir}`);
     } catch (error) {
       // Directory already exists or permission error
-      console.warn(`Warning: Could not create directory ${dir}:`, error.message);
+      console.warn(`⚠ Warning: Could not create/access directory ${dir}:`, error.message);
     }
   }
 }
@@ -65,6 +71,10 @@ app.get('/api/health', (req, res) => {
 // Video routes
 const videoRoutes = require('./routes/videoRoutes');
 app.use('/api/video', videoRoutes);
+
+// API check routes
+const apiCheckRoutes = require('./routes/apiCheckRoutes');
+app.use('/api/check', apiCheckRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
