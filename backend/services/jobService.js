@@ -457,21 +457,80 @@ async function processJob(jobId) {
 }
 
 /**
- * Cleanup old jobs (older than 24 hours)
+ * Cleanup old jobs and their files (older than 2 hours)
+ * Files are temporary - delete after user downloads or 2 hours pass
  */
 async function cleanupOldJobs() {
   const now = Date.now();
-  const oneDay = 24 * 60 * 60 * 1000;
+  const twoHours = 2 * 60 * 60 * 1000; // 2 hours
+  const fs = require('fs').promises;
+  const path = require('path');
 
   for (const [jobId, job] of jobs.entries()) {
-    if (now - job.createdAt.getTime() > oneDay) {
+    const age = now - job.createdAt.getTime();
+    
+    if (age > twoHours) {
+      // Delete job files if they exist
+      if (job.result) {
+        try {
+          // Delete video files
+          if (job.result.video?.path) {
+            await fs.unlink(job.result.video.path).catch(() => {});
+          }
+          if (job.result.draft?.path) {
+            await fs.unlink(job.result.draft.path).catch(() => {});
+          }
+          if (job.result.noVoice?.path) {
+            await fs.unlink(job.result.noVoice.path).catch(() => {});
+          }
+          if (job.result.scriptFile?.path) {
+            await fs.unlink(job.result.scriptFile.path).catch(() => {});
+          }
+        } catch (fileError) {
+          console.warn(`Failed to delete files for job ${jobId}:`, fileError.message);
+        }
+      }
+      
+      // Delete job from memory
       jobs.delete(jobId);
+      console.log(`Cleaned up job ${jobId} and its files (age: ${Math.round(age / 1000 / 60)} minutes)`);
     }
   }
 }
 
-// Run cleanup every hour
-setInterval(cleanupOldJobs, 60 * 60 * 1000);
+/**
+ * Cleanup files for a specific job (called after download)
+ * @param {string} jobId - Job ID
+ */
+async function cleanupJobFiles(jobId) {
+  const job = getJob(jobId);
+  if (!job || !job.result) return;
+
+  const fs = require('fs').promises;
+  
+  try {
+    // Delete video files
+    if (job.result.video?.path) {
+      await fs.unlink(job.result.video.path).catch(() => {});
+    }
+    if (job.result.draft?.path) {
+      await fs.unlink(job.result.draft.path).catch(() => {});
+    }
+    if (job.result.noVoice?.path) {
+      await fs.unlink(job.result.noVoice.path).catch(() => {});
+    }
+    if (job.result.scriptFile?.path) {
+      await fs.unlink(job.result.scriptFile.path).catch(() => {});
+    }
+    
+    console.log(`Cleaned up files for job ${jobId}`);
+  } catch (error) {
+    console.warn(`Failed to cleanup files for job ${jobId}:`, error.message);
+  }
+}
+
+// Run cleanup every 30 minutes
+setInterval(cleanupOldJobs, 30 * 60 * 1000);
 
 module.exports = {
   createJob,
@@ -479,5 +538,6 @@ module.exports = {
   updateJob,
   processJob,
   addLog,
+  cleanupJobFiles,
 };
 

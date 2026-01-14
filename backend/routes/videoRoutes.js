@@ -95,17 +95,20 @@ router.get('/download/:filename', (req, res) => {
  * GET /api/video/download/draft/:filename
  * Download draft video
  */
-router.get('/download/draft/:filename', (req, res) => {
+router.get('/download/draft/:filename', async (req, res) => {
   const filename = req.params.filename;
   const filePath = path.join(__dirname, '../../output/draft', filename);
 
-  res.download(filePath, (err) => {
+  res.download(filePath, async (err) => {
     if (err) {
       console.error('Download error:', err);
       res.status(404).json({
         success: false,
         error: 'Draft video not found',
       });
+    } else {
+      // Auto-cleanup after download (optional - can be disabled)
+      // Files will be cleaned up by scheduled job anyway
     }
   });
 });
@@ -312,6 +315,69 @@ router.get('/status/:jobId', (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to get job status',
+    });
+  }
+});
+
+/**
+ * POST /api/video/cleanup/:jobId
+ * Manually cleanup job files (optional - files auto-delete after 2 hours)
+ */
+router.post('/cleanup/:jobId', async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    jobService.cleanupJobFiles(jobId);
+    
+    res.json({
+      success: true,
+      message: 'Job files cleanup initiated',
+      jobId,
+    });
+  } catch (error) {
+    console.error('Cleanup error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to cleanup job files',
+    });
+  }
+});
+
+/**
+ * POST /api/video/cleanup/all
+ * Cleanup all old temp files (admin only - use with caution)
+ */
+router.post('/cleanup/all', async (req, res) => {
+  try {
+    const tempDir = path.join(__dirname, '../../output/temp');
+    const files = await fs.readdir(tempDir);
+    
+    let deletedCount = 0;
+    for (const file of files) {
+      try {
+        const filePath = path.join(tempDir, file);
+        const stats = await fs.stat(filePath);
+        const age = Date.now() - stats.mtimeMs;
+        const twoHours = 2 * 60 * 60 * 1000;
+        
+        if (age > twoHours) {
+          await fs.unlink(filePath);
+          deletedCount++;
+        }
+      } catch (err) {
+        // Ignore individual file errors
+      }
+    }
+    
+    res.json({
+      success: true,
+      message: `Cleaned up ${deletedCount} temp files`,
+      deletedCount,
+    });
+  } catch (error) {
+    console.error('Cleanup all error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to cleanup temp files',
     });
   }
 });
